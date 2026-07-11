@@ -1,0 +1,50 @@
+.tiny-button { display: inline-flex; align-items: center; gap: 4px; border: 0; border-radius: 6px; background: #171c23; padding: 4px 6px; color: var(--muted); font-size: 8px; cursor: pointer; }
+.tiny-button:hover { color: var(--text-soft); }
+.spawn-agent-form { display: grid; gap: 9px; margin: 0 0 10px; border: 1px solid var(--line); border-radius: 9px; background: #0a0d11; padding: 10px; }
+.spawn-agent-form label { display: grid; gap: 5px; color: var(--muted); font-size: 8px; font-weight: 650; }
+.spawn-agent-form input,
+.spawn-agent-form textarea,
+.spawn-agent-form select,
+.agent-composer textarea { width: 100%; min-width: 0; resize: vertical; border: 1px solid var(--line); border-radius: 7px; outline: 0; background: #080b0f; padding: 7px 8px; color: var(--text-soft); font-size: 9px; }
+.spawn-agent-form input:focus,
+.spawn-agent-form textarea:focus,
+.spawn-agent-form select:focus,
+.agent-composer textarea:focus { border-color: #4b5562; }
+
+.agent-tree { display: grid; gap: 3px; }
+.agent-tree > button { display: grid; min-width: 0; grid-template-columns: 7px minmax(0, 1fr) 12px; align-items: center; gap: 7px; border: 1px solid transparent; border-radius: 7px; background: transparent; padding-top: 7px; padding-right: 7px; padding-bottom: 7px; color: var(--muted); text-align: left; cursor: pointer; }
+.agent-tree > button:hover { background: #131820; }
+.agent-tree > button.selected { border-color: #3c332f; background: var(--accent-soft); }
+.agent-tree > button > span:nth-child(2) { display: grid; min-width: 0; gap: 2px; }
+.agent-tree strong,
+.agent-tree small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-tree strong { color: #cbd0d7; font-size: 9px; }
+.agent-tree small { color: var(--muted-2); font-size: 8px; }
+.agent-status { width: 6px; height: 6px; border-radius: 99px; background: #56606d; }
+.agent-status.running { background: var(--green); box-shadow: 0 0 0 3px rgb(89 212 156 / 10%); }
+.agent-status.error { background: var(--red); }
+.agent-status.completed { background: #7fb7ed; }
+.agent-empty { display: grid; min-height: 62px; place-items: center; align-content: center; gap: 5px; color: var(--muted-2); font-size: 8px; }
+
+.agent-detail { margin-top: 10px; border: 1px solid var(--line); border-radius: 9px; background: #0a0d11; padding: 10px; }
+.agent-detail > header { display: flex; align-items: center; gap: 8px; }
+.agent-detail > header > div:nth-child(2) { display: grid; min-width: 0; flex: 1; gap: 2px; }
+.agent-detail > header strong { font-size: 10px; }
+.agent-detail > header span { color: var(--muted-2); font-size: 8px; }
+.agent-detail > header .icon-button { width: 29px; height: 29px; color: var(--red); }
+.agent-avatar { display: grid; width: 29px; height: 29px; place-items: center; border-radius: 8px; background: #17202a; color: #90a9be; }
+.agent-task { margin: 9px 0 0; border-left: 2px solid #3b4552; padding-left: 8px; color: var(--muted); font-size: 8px; line-height: 1.5; }
+.agent-relations { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 9px; }
+.agent-relations button { border: 1px solid var(--line-soft); border-radius: 99px; background: #11161d; padding: 4px 7px; color: var(--muted); font-size: 7px; cursor: pointer; }
+.agent-relations button:hover { color: var(--text-soft); }
+.agent-transcript { display: grid; max-height: 220px; gap: 7px; overflow-y: auto; margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 10px; scrollbar-color: #2b323d transparent; }
+.agent-transcript article { max-width: 88%; border-radius: 8px; padding: 7px 8px; }
+.agent-transcript article.inbound { justify-self: start; background: #131820; }
+.agent-transcript article.outbound { justify-self: end; background: var(--accent-soft); }
+.agent-transcript small { display: block; margin-bottom: 3px; color: var(--muted-2); font-size: 7px; }
+.agent-transcript p { margin: 0; color: #c6cbd2; font-size: 8px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.agent-composer { display: grid; grid-template-columns: minmax(0, 1fr) 30px; gap: 6px; margin-top: 8px; }
+.agent-composer textarea { resize: none; }
+.agent-composer button { display: grid; place-items: center; border: 0; border-radius: 7px; background: var(--accent); color: #230b07; cursor: pointer; }
+.agent-composer button:disabled { opacity: 0.45; }
+.subagent-limits { margin-top: 15px; }

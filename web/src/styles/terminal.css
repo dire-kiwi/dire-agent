@@ -1,0 +1,136 @@
+@font-face {
+  font-family: "GoAgent Nerd Symbols";
+  src: url("https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.4.0/patched-fonts/NerdFontsSymbolsOnly/SymbolsNerdFontMono-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
+
+.terminal-host { min-width: 0; min-height: 0; flex: 1; overflow: hidden; padding: 8px 4px 4px 10px; background: #222436; font-family: var(--font-terminal); }
+.terminal-host .xterm { height: 100%; }
+.terminal-host .xterm-viewport { scrollbar-color: #3b4261 #222436; }
+
+.terminal-workspace-panel {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  background: #222436;
+  font-family: var(--font-terminal);
+}
+
+.terminal-panel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #222436;
+  font-family: var(--font-terminal);
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.terminal-panel-active {
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.terminal-panel > .terminal-host {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  flex: 1 1 auto;
+}
+
+.terminal-panel .xterm,
+.terminal-panel .xterm-screen,
+.terminal-panel .xterm-rows {
+  font-family: var(--font-terminal);
+}
+
+.terminal-panel-status {
+  position: absolute;
+  z-index: 3;
+  right: 12px;
+  bottom: 8px;
+  max-width: min(360px, calc(100% - 24px));
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 999px;
+  background: rgb(13 17 23 / 88%);
+  padding: 3px 8px;
+  color: #a0a8b5;
+  font: 500 9px/1.2 var(--font-terminal);
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-panel-status.connected {
+  border-color: rgb(158 206 106 / 18%);
+  color: var(--green);
+  opacity: 0;
+}
+
+.workspace-content-panel,
+.desktop-launcher-panel,
+.workspace-panel-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.workspace-content-panel-active,
+.workspace-panel-loading {
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.workspace-content-panel > .conversation-panel { width: 100%; height: 100%; }
+
+.workspace-panel-loading {
+  z-index: 2;
+  place-content: center;
+  place-items: center;
+  background: #151824;
+  color: #8b95a4;
+  font: 11px var(--font-terminal);
+}
+
+.desktop-launcher-panel {
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 50% 20%, rgb(255 118 87 / 8%), transparent 35%),
+    #090c10;
+  padding: 30px;
+}
+
+.desktop-launcher-card {
+  display: grid;
+  width: min(440px, 100%);
+  justify-items: center;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #0e1217;
+  padding: 38px 30px;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 25%);
+  text-align: center;
+}
+.desktop-launcher-icon { display: grid; width: 52px; height: 52px; place-items: center; margin-bottom: 17px; border-radius: 14px; background: var(--accent-soft); color: var(--accent); }
+.desktop-launcher-card h2 { margin: 7px 0 0; font-size: 22px; }
+.desktop-launcher-card p { max-width: 350px; margin: 12px 0 20px; color: var(--muted); font-size: 10px; line-height: 1.65; }
+.desktop-launcher-card code { color: #d6a298; font-family: var(--font-terminal); }
+
+@media (max-width: 620px) {
+  .terminal-host { padding-left: 5px; }
+  .terminal-panel-status { right: 7px; bottom: 5px; }
+}

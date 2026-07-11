@@ -1,0 +1,19 @@
+.capability-command-form { display: grid; gap: 8px; }
+.capability-command-form > label { display: grid; gap: 5px; color: var(--muted); font-size: 8px; font-weight: 650; }
+.capability-command-form select,
+.capability-command-form textarea { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 7px; outline: 0; background: #080b0f; padding: 7px 8px; color: var(--text-soft); font-size: 9px; }
+.capability-command-form textarea { resize: vertical; line-height: 1.5; }
+.capability-command-form select:focus,
+.capability-command-form textarea:focus { border-color: #4b5562; }
+.command-description { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 7px; border: 1px solid var(--line-soft); border-radius: 7px; background: #0a0d11; padding: 7px 8px; color: #8fa8bc; }
+.command-description > span { display: grid; min-width: 0; gap: 2px; }
+.command-description strong,
+.command-description small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.command-description strong { color: #cdd2d9; font-family: monospace; font-size: 9px; }
+.command-description small { color: var(--muted-2); font-size: 8px; }
+.command-result { display: grid; gap: 5px; border: 1px solid #244538; border-radius: 8px; background: var(--green-soft); padding: 8px; color: var(--green); }
+.command-result.failed { border-color: #542b33; background: var(--red-soft); color: var(--red); }
+.command-result strong { font-size: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+.command-result pre { max-height: 160px; overflow: auto; margin: 0; color: #bdc8c1; font-family: "SFMono-Regular", Consolas, monospace; font-size: 8px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.command-result.failed pre { color: #d6a0a6; }
+.command-result span { color: #94b9a7; font-size: 8px; }

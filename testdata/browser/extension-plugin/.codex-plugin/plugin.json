@@ -1,0 +1,5 @@
+{
+  "name": "Browser Fixture Extension",
+  "version": "1.0.0",
+  "description": "Deterministic extension fixture for Web UI validation"
+}

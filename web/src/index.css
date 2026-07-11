@@ -1,0 +1,19 @@
+@import "tailwindcss";
+@import "./styles/base.css";
+@import "./styles/shell.css";
+@import "./styles/conversation.css";
+@import "./styles/forms.css";
+@import "./styles/terminal.css";
+@import "./styles/subagents.css";
+@import "./styles/commands.css";
+@import "./styles/settings.css";
+@import "./styles/responsive.css";
+
+@theme {
+  --color-canvas: #080a0e;
+  --color-panel: #0c0f14;
+  --color-raised: #11151c;
+  --color-agent-accent: #ff7657;
+  --font-mono: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", ui-monospace, monospace;
+  --font-terminal: "Cascadia Code", "GoAgent Nerd Symbols", "CaskaydiaCove Nerd Font Mono", "Symbols Nerd Font Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+}

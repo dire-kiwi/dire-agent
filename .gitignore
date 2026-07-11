@@ -1,0 +1,37 @@
+# Compiled binaries and test artifacts
+/goagent
+/goagentd
+/goagentctl
+/goagent-mcp
+/dire-agent
+/dire-agentd
+/dire-agentctl
+/dire-agent-mcp
+*.test
+coverage.out
+*.coverprofile
+
+# Build output
+/dist/
+/internal/webui/dist/
+
+# Runtime data and generated caches
+*.db
+*.db-shm
+*.db-wal
+*.log
+.goagent/
+.dire-agent/
+.vite/
+.wrangler/
+
+# Local configuration and credentials
+.env*
+!.env.example
+*.pem
+
+# OS and editor metadata
+.DS_Store
+.idea/
+.vscode/
+*~

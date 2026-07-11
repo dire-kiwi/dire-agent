@@ -1,0 +1,111 @@
+input,
+textarea,
+select { accent-color: var(--accent); }
+
+.field-stack,
+.settings-grid { border: 0; padding: 0; }
+.field-stack { display: grid; gap: 12px; margin: 0; }
+.field-stack label,
+.settings-field,
+.modal-card > label,
+.inline-create label { display: grid; gap: 6px; color: var(--muted); font-size: 9px; font-weight: 650; }
+
+.field-stack input,
+.field-stack select,
+.field-stack textarea,
+.settings-field input,
+.settings-field select,
+.settings-field textarea,
+.modal-card input,
+.modal-card textarea,
+.inline-create input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: 0;
+  background: #0a0d11;
+  padding: 8px 9px;
+  color: var(--text-soft);
+  font-size: 10px;
+}
+.field-stack textarea,
+.modal-card textarea { resize: vertical; font-family: var(--font-mono); line-height: 1.5; }
+.settings-field textarea { resize: vertical; line-height: 1.55; }
+.field-stack input:focus,
+.field-stack select:focus,
+.field-stack textarea:focus,
+.settings-field input:focus,
+.settings-field select:focus,
+.settings-field textarea:focus,
+.modal-card input:focus,
+.modal-card textarea:focus,
+.inline-create input:focus { border-color: #4d5663; }
+.settings-field small { color: var(--muted-2); font-size: 8px; font-weight: 450; line-height: 1.45; }
+.settings-field textarea[aria-invalid="true"] { border-color: #6b323b; }
+
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.modal-layer { position: fixed; z-index: 90; inset: 0; display: grid; place-items: center; padding: 20px; }
+.modal-scrim { position: absolute; inset: 0; border: 0; background: rgb(0 0 0 / 68%); backdrop-filter: blur(5px); cursor: default; }
+.modal-card { position: relative; z-index: 1; display: grid; width: min(100%, 430px); gap: 15px; border: 1px solid #343b46; border-radius: 13px; background: #11151b; padding: 18px; box-shadow: var(--shadow); }
+.modal-heading { display: flex; align-items: center; gap: 10px; }
+.modal-heading > div:nth-child(2) { display: grid; min-width: 0; gap: 2px; }
+.modal-heading strong { font-size: 13px; }
+.modal-heading span { color: var(--muted); font-size: 9px; }
+.modal-heading .icon-button { margin-left: auto; }
+.modal-icon { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid #422b26; border-radius: 9px; background: var(--accent-soft); color: var(--accent); }
+.modal-card > p { margin: -3px 0 0; color: var(--muted-2); font-size: 9px; line-height: 1.55; }
+.modal-card code { color: #e7a798; font-family: monospace; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+.connection-detail { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line-soft); border-radius: 8px; background: #0c0f14; padding: 9px; color: var(--muted); font-size: 9px; }
+.form-error { color: var(--red) !important; }
+
+.drawer-scrim { position: fixed; z-index: 59; inset: 0; border: 0; background: rgb(0 0 0 / 43%); cursor: default; }
+.conversation-drawer {
+  position: fixed;
+  z-index: 60;
+  top: 0;
+  right: 0;
+  display: flex;
+  width: min(390px, 92vw);
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  flex-direction: column;
+  border-left: 1px solid #333a45;
+  background: #0d1015;
+  box-shadow: -20px 0 60px rgb(0 0 0 / 30%);
+}
+.drawer-heading { display: flex; min-height: 60px; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding: 0 15px; }
+.drawer-heading > div { display: grid; gap: 3px; }
+.drawer-heading strong { font-size: 12px; }
+.drawer-scroll { min-height: 0; flex: 1; overflow-y: auto; padding: 15px; scrollbar-color: #2c333e transparent; }
+.drawer-scroll > .usage-summary { grid-template-columns: repeat(4, 1fr); margin-bottom: 16px; }
+.drawer-scroll > .usage-summary .context-summary { grid-column: 1 / -1; border-top: 1px solid var(--line-soft); }
+.drawer-section { margin-top: 18px; border-top: 1px solid var(--line-soft); padding-top: 15px; }
+.section-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; color: #b9c0c9; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.section-title small { color: var(--muted-2); font-size: 8px; }
+.tool-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.tool-chip { display: flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 7px; background: #10141a; padding: 6px 7px; color: var(--muted); font-size: 8px; cursor: pointer; }
+.tool-chip.checked { border-color: #4c3834; background: var(--accent-soft); color: #e5aa9d; }
+.tool-chip input { width: 10px; height: 10px; margin: 0; }
+.capability-list { display: grid; gap: 4px; }
+.capability-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) 8px; align-items: center; gap: 7px; border: 1px solid var(--line-soft); border-radius: 7px; background: #0b0e12; padding: 7px 8px; color: var(--muted); }
+.capability-row > div { display: grid; min-width: 0; gap: 2px; }
+.capability-row strong,
+.capability-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.capability-row strong { color: #cdd2d9; font-size: 9px; }
+.capability-row small { color: var(--muted-2); font-size: 8px; }
+.status-ready,
+.status-muted { width: 6px; height: 6px; border-radius: 99px; }
+.status-ready { background: var(--green); }
+.status-muted { background: #4b5563; }
+.quiet-copy { margin: 7px 0; color: var(--muted-2); font-size: 9px; line-height: 1.5; }
+.resource-card { display: flex; align-items: flex-start; gap: 9px; margin: 17px 0 10px; border: 1px solid var(--line-soft); border-radius: 8px; background: #0a0d11; padding: 10px; color: var(--muted); }
+.resource-card > div { display: grid; min-width: 0; gap: 3px; }
+.resource-card strong { overflow-wrap: anywhere; color: #bdc4cd; font-family: monospace; font-size: 9px; font-weight: 550; }
+.resource-card small { color: var(--muted-2); font-size: 8px; }
+.sandbox-main-folder { margin: 0 0 10px; }
+.sandbox-folder-editor { margin-bottom: 10px; }
+.sandbox-folder-editor > span { color: var(--muted); font-size: 9px; font-weight: 650; }
+.drawer-empty { display: grid; min-height: 200px; place-items: center; color: var(--muted-2); font-size: 10px; }

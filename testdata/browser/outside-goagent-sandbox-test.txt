@@ -1,0 +1,2 @@
+This marker is deliberately outside testdata/browser/project.
+The project read tool must reject access to it.

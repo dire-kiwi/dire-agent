@@ -47,14 +47,25 @@ describe("App settings", () => {
     expect(await screen.findByText("Configuration saved")).toBeInTheDocument();
   });
 
+  it("chooses safe model defaults when the provider changes", async () => {
+    const user = userEvent.setup();
+    await openSettings(user);
+    const general = screen.getByRole("heading", { name: "Model and reasoning" }).closest("section")!;
+    const provider = within(general).getByLabelText("Provider");
+    await user.selectOptions(provider, "openrouter");
+    expect(within(general).getByLabelText("Model")).toHaveValue("openrouter/auto");
+    expect(within(general).getByLabelText(/Context window/)).toHaveValue(0);
+    const standalone = screen.getByRole("heading", { name: "Standalone chat defaults" }).closest("section")!;
+    expect(within(standalone).getByLabelText("Model")).toHaveValue("openrouter/auto");
+  });
+
   it("surfaces revision conflicts and reloads the authoritative document", async () => {
     const user = userEvent.setup();
     mockState.configConflict = true;
     await openSettings(user);
     const section = screen.getByRole("heading", { name: "Model and reasoning" }).closest("section")!;
     const provider = within(section).getByLabelText("Provider");
-    await user.clear(provider);
-    await user.type(provider, "other-provider");
+    await user.selectOptions(provider, "openrouter");
     await user.click(screen.getAllByRole("button", { name: "Save changes" })[0]);
 
     const alert = await screen.findByRole("alert");

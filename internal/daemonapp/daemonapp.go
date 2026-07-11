@@ -23,7 +23,6 @@ import (
 	"github.com/imeredith/dire-agent/internal/buildinfo"
 	"github.com/imeredith/dire-agent/internal/lifecycle"
 	"github.com/imeredith/dire-agent/internal/webui"
-	"github.com/imeredith/dire-agent/provider/codex"
 	"github.com/imeredith/dire-agent/threadstore"
 )
 
@@ -36,7 +35,8 @@ func Run(arguments []string) error {
 	dataDirectory := flags.String("data-dir", "", "directory containing one SQLite file per project")
 	configPath := flags.String("config", "", "versioned daemon configuration file")
 	authFile := flags.String("auth-file", "", "Codex CLI auth.json path")
-	defaultModel := flags.String("model", "gpt-5.6", "default model")
+	providerName := flags.String("provider", "", "model provider: codex or openrouter (default: configured provider)")
+	defaultModel := flags.String("model", "", "default model (default: configured model)")
 	defaultCWD := flags.String("cwd", "", "default project folder")
 	defaultTools := flags.String("tools", "read,grep,find,ls", "comma-separated default tool allowlist")
 	webDirectory := flags.String("web-dir", "", "serve the production Web UI from this Vite dist directory")
@@ -50,6 +50,11 @@ func Run(arguments []string) error {
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
+	providerExplicit, modelExplicit := false, false
+	flags.Visit(func(flag *flag.Flag) {
+		providerExplicit = providerExplicit || flag.Name == "provider"
+		modelExplicit = modelExplicit || flag.Name == "model"
+	})
 	if err := ValidateListenerSecurity(*address, *allowRemote, *projectProxy, *allowRemoteProjectProxy); err != nil {
 		return err
 	}
@@ -101,8 +106,28 @@ func Run(arguments []string) error {
 	if err != nil {
 		return err
 	}
-	if *defaultModel == "gpt-5.6" && loadedConfig.Global.Model.ID != "" {
-		*defaultModel = loadedConfig.Global.Model.ID
+	configuredProvider, err := normalizeModelProvider(loadedConfig.Global.Model.Provider)
+	if err != nil {
+		return err
+	}
+	if !providerExplicit {
+		*providerName = configuredProvider
+	} else {
+		*providerName, err = normalizeModelProvider(*providerName)
+		if err != nil {
+			return err
+		}
+	}
+	if !modelExplicit {
+		if !providerExplicit || *providerName == configuredProvider {
+			*defaultModel = strings.TrimSpace(loadedConfig.Global.Model.ID)
+		}
+		if *defaultModel == "" || (providerExplicit && *providerName != configuredProvider) {
+			*defaultModel = defaultModelForProvider(*providerName)
+		}
+	}
+	if err := validateProviderModel(*providerName, *defaultModel); err != nil {
+		return err
 	}
 	if *defaultTools == "read,grep,find,ls" && len(loadedConfig.Global.Tools.Enabled) > 0 {
 		*defaultTools = strings.Join(loadedConfig.Global.Tools.Enabled, ",")
@@ -119,7 +144,9 @@ func Run(arguments []string) error {
 	defer stopSignals()
 	ctx, stopDaemon := context.WithCancel(ctx)
 	defer stopDaemon()
-	provider, err := codex.New(ctx, codex.Config{AuthFile: *authFile, DefaultModel: *defaultModel})
+	provider, err := newModelProvider(ctx, modelProviderOptions{
+		Name: *providerName, DefaultModel: *defaultModel, CodexAuthFile: *authFile,
+	})
 	if err != nil {
 		return err
 	}
@@ -135,9 +162,22 @@ func Run(arguments []string) error {
 		Defaults: loadedConfig.Global,
 		Sources:  []capability.Source{mcpSource, extensionSource},
 	})
+	var availableModels []daemon.ModelInfo
+	if *providerName == openRouterProviderName {
+		contextWindow := int64(0)
+		if configuredProvider == *providerName && loadedConfig.Global.Model.ID == *defaultModel {
+			contextWindow = loadedConfig.Global.Model.ContextWindow
+		}
+		availableModels = []daemon.ModelInfo{{
+			Provider: *providerName, ID: *defaultModel, ContextWindow: contextWindow,
+		}}
+	}
 	manager, err := daemon.NewManager(daemon.ManagerConfig{
-		Store: store, Provider: provider, DefaultModel: *defaultModel, DefaultCWD: *defaultCWD,
-		DefaultTools: SplitList(*defaultTools), DefaultThinking: string(loadedConfig.Global.Thinking.Level),
+		Store: store, Provider: provider, DefaultProvider: *providerName,
+		DefaultModel: *defaultModel, DefaultCWD: *defaultCWD, AvailableModels: availableModels,
+		OverrideModelDefaults: providerExplicit || modelExplicit,
+		SupportedProviders:    []string{codexProviderName, openRouterProviderName},
+		DefaultTools:          SplitList(*defaultTools), DefaultThinking: string(loadedConfig.Global.Thinking.Level),
 		Settings: configStore, Capabilities: capabilities,
 	})
 	if err != nil {

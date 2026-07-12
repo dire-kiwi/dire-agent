@@ -101,10 +101,11 @@ jobs:
             "args": ["daemon", "-addr", "0.0.0.0:8080", "-allow-remote", "-project-proxy=false"],
             "codex_auth": true,
             "env": {
-              "HOME": "/tmp",
+              "HOME": "/home/preview",
+              "SHELL": "/bin/bash",
               "CODEX_HOME": "/tmp/.codex",
-              "XDG_CONFIG_HOME": "/tmp/.config",
-              "XDG_DATA_HOME": "/tmp/.local/share"
+              "XDG_CONFIG_HOME": "/home/preview/.config",
+              "XDG_DATA_HOME": "/home/preview/.local/share"
             }
           }
           EOF

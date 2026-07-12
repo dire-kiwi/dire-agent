@@ -60,9 +60,12 @@ func parseSpawnRequest(parentID, argument string) (agentteam.SpawnRequest, error
 	head, task, hasSeparator := strings.Cut(argument, " -- ")
 	fields := strings.Fields(head)
 	profile := "general"
+	mode := ""
 	if hasSeparator {
-		if len(fields) < 1 || len(fields) > 2 || strings.TrimSpace(task) == "" {
-			return agentteam.SpawnRequest{}, errors.New("usage: /spawn NAME [PROFILE] -- TASK")
+		var err error
+		fields, mode, err = parseSpawnHead(fields)
+		if err != nil || len(fields) < 1 || len(fields) > 2 || strings.TrimSpace(task) == "" {
+			return agentteam.SpawnRequest{}, errors.New("usage: /spawn NAME [PROFILE] [--mode MODE] -- TASK")
 		}
 		if len(fields) == 2 {
 			profile = fields[1]
@@ -75,7 +78,34 @@ func parseSpawnRequest(parentID, argument string) (agentteam.SpawnRequest, error
 		task = strings.Join(fields[1:], " ")
 		fields = fields[:1]
 	}
-	return agentteam.SpawnRequest{ParentID: parentID, Name: fields[0], Profile: profile, Task: strings.TrimSpace(task)}, nil
+	return agentteam.SpawnRequest{
+		ParentID: parentID, Name: fields[0], Mode: mode, Profile: profile, Task: strings.TrimSpace(task),
+	}, nil
+}
+
+func parseSpawnHead(fields []string) ([]string, string, error) {
+	positionals := make([]string, 0, 2)
+	mode := ""
+	for index := 0; index < len(fields); index++ {
+		field := fields[index]
+		if field == "--mode" {
+			if mode != "" || index+1 >= len(fields) || strings.HasPrefix(fields[index+1], "--") {
+				return nil, "", errors.New("invalid spawn mode")
+			}
+			mode = fields[index+1]
+			index++
+			continue
+		}
+		if strings.HasPrefix(field, "--mode=") {
+			if mode != "" || strings.TrimPrefix(field, "--mode=") == "" {
+				return nil, "", errors.New("invalid spawn mode")
+			}
+			mode = strings.TrimPrefix(field, "--mode=")
+			continue
+		}
+		positionals = append(positionals, field)
+	}
+	return positionals, mode, nil
 }
 
 func formatAgents(agents []agentteam.Agent) string {

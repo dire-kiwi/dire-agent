@@ -180,7 +180,7 @@ describe("App conversations", () => {
     await user.type(message, "Focus on token validation");
     await user.click(within(drawer).getByRole("button", { name: "Send agent message" }));
     await user.click(within(drawer).getByRole("button", { name: "Interrupt reviewer" }));
-    expect(mockState.requests).toContainEqual(expect.objectContaining({ type: "spawn_agent", agent_name: "reviewer" }));
+    expect(mockState.requests).toContainEqual(expect.objectContaining({ type: "spawn_agent", agent_name: "reviewer", mode: "direct" }));
     expect(mockState.requests).toContainEqual(expect.objectContaining({ type: "send_agent_message", agent_id: "agent_review" }));
     expect(mockState.requests).toContainEqual(expect.objectContaining({ type: "interrupt_agent", agent_id: "agent_review" }));
 
@@ -215,5 +215,30 @@ describe("App conversations", () => {
     await waitFor(() => expect(within(drawer).getByText("Review complete")).toBeInTheDocument());
     await waitFor(() => expect(within(drawer).getByText("All checks pass")).toBeInTheDocument());
     await waitFor(() => expect(within(drawer).getByText("general · idle")).toBeInTheDocument());
+  });
+
+  it("spawns through the configured model router without a direct model override", async () => {
+    const user = userEvent.setup();
+    mockState.projects = [projectFixture];
+    render(<App />);
+    await screen.findByLabelText("Message the agent");
+    await user.click(screen.getAllByRole("button", { name: "Open conversation details" })[0]);
+    const drawer = screen.getByRole("complementary", { name: "Conversation details" });
+    await user.click(within(drawer).getByRole("button", { name: "Spawn" }));
+    const form = within(drawer).getByRole("form", { name: "Spawn agent" });
+    await user.selectOptions(within(form).getByLabelText("Spawn mode"), "model-router");
+    expect(within(form).queryByLabelText("Model")).not.toBeInTheDocument();
+    expect(within(form).getByText(/configured controller will choose/i)).toBeInTheDocument();
+    await user.type(within(form).getByLabelText("Name"), "router");
+    await user.type(within(form).getByLabelText("Task"), "Pick the best model and review the parser");
+    await user.click(within(form).getByRole("button", { name: /Spawn child agent/ }));
+
+    expect(mockState.requests).toContainEqual(expect.objectContaining({
+      type: "spawn_agent",
+      agent_name: "router",
+      mode: "model-router",
+      task: "Pick the best model and review the parser",
+      model: undefined,
+    }));
   });
 });

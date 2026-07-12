@@ -222,10 +222,12 @@ func (r *threadRuntime) takeFollowUpOrSettle() string {
 	defer r.mu.Unlock()
 	messages := takeQueue(&r.followUps, r.thread.FollowUpMode)
 	if len(messages) == 0 {
-		r.running = false
+		// Close the prompt-start window before releasing the runtime lock. The
+		// run remains active until its finalizer records the terminal status, but
+		// new prompts now observe finishing and cannot start a second goroutine
+		// against the same session while this run is settling.
+		r.finishing = true
 		r.cancel = nil
-		r.thread.Status = "idle"
-		r.thread.UpdatedAt = time.Now().UTC()
 	}
 	return strings.Join(messages, "\n\n")
 }

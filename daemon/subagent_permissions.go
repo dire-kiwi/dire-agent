@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/dire-kiwi/dire-agent/configuration"
 	"github.com/dire-kiwi/dire-agent/threadstore"
 	"github.com/dire-kiwi/dire-agent/tools"
 )
@@ -12,6 +13,11 @@ import (
 // capability refresh. A child may regain an originally granted tool if a
 // parent re-enables it, but it can never exceed its persisted spawn grant.
 func (m *Manager) effectiveSubagentTools(ctx context.Context, resource threadstore.Thread) ([]string, error) {
+	if resource.AgentProfile == configuration.ModelRouterControllerProfile {
+		// A router carries the parent's grant so its worker can inherit it, but
+		// the controller model itself only receives orchestration tools.
+		return []string{}, nil
+	}
 	allowed := make(map[string]bool, len(resource.AgentTools))
 	for _, name := range resource.AgentTools {
 		allowed[name] = true
@@ -21,6 +27,55 @@ func (m *Manager) effectiveSubagentTools(ctx context.Context, resource threadsto
 		builtins[name] = true
 	}
 	narrowLocalTools(allowed, resource.Tools, builtins)
+	current := resource
+	visited := map[string]bool{resource.ID: true}
+	for depth := 0; current.ParentID != ""; depth++ {
+		if depth >= 128 {
+			return nil, errors.New("daemon: subagent ancestry exceeds safety limit")
+		}
+		if visited[current.ParentID] {
+			return nil, errors.New("daemon: cycle in subagent ancestry")
+		}
+		visited[current.ParentID] = true
+		parent, err := m.threadMetadata(ctx, current.ParentID)
+		if err != nil {
+			return nil, err
+		}
+		if parent.IsSubagent() {
+			parentGrant := make(map[string]bool, len(parent.AgentTools))
+			for _, name := range parent.AgentTools {
+				parentGrant[name] = true
+			}
+			for name := range allowed {
+				if !parentGrant[name] {
+					delete(allowed, name)
+				}
+			}
+		}
+		narrowLocalTools(allowed, parent.Tools, builtins)
+		current = parent
+	}
+	result := make([]string, 0, len(resource.AgentTools))
+	for _, name := range resource.AgentTools {
+		if allowed[name] {
+			result = append(result, name)
+		}
+	}
+	return result, nil
+}
+
+// effectiveModelRouterGrant returns the permission envelope a synthetic
+// router may pass to its worker. The router's own local tool list is ignored,
+// while every ancestor grant and current built-in restriction is reapplied.
+func (m *Manager) effectiveModelRouterGrant(ctx context.Context, resource threadstore.Thread) ([]string, error) {
+	allowed := make(map[string]bool, len(resource.AgentTools))
+	for _, name := range resource.AgentTools {
+		allowed[name] = true
+	}
+	builtins := make(map[string]bool)
+	for _, name := range tools.Names() {
+		builtins[name] = true
+	}
 	current := resource
 	visited := map[string]bool{resource.ID: true}
 	for depth := 0; current.ParentID != ""; depth++ {

@@ -51,10 +51,17 @@ func TestDefaultConfigIsValidAndIndependent(t *testing.T) {
 	if first.Global.Desktop.CodexHome != filepath.Join(home, ".codex") {
 		t.Fatalf("Codex home = %q", first.Global.Desktop.CodexHome)
 	}
+	if first.Global.Subagents.ModelRouting.ControllerModel == "" ||
+		first.Global.Subagents.ModelRouting.ControllerThinking != ThinkingMedium ||
+		len(first.Global.Subagents.ModelRouting.AllowedModels) == 0 {
+		t.Fatalf("model routing defaults are not usable: %+v", first.Global.Subagents.ModelRouting)
+	}
 	first.Global.Tools.Enabled[0] = "changed"
 	first.Global.Launchers[2].Args[0] = "changed"
+	first.Global.Subagents.ModelRouting.AllowedModels[0] = "changed"
 	first.Global.MCP.Servers["new"] = MCPServer{}
-	if second.Global.Tools.Enabled[0] == "changed" || second.Global.Launchers[2].Args[0] == "changed" || len(second.Global.MCP.Servers) != 0 {
+	if second.Global.Tools.Enabled[0] == "changed" || second.Global.Launchers[2].Args[0] == "changed" ||
+		second.Global.Subagents.ModelRouting.AllowedModels[0] == "changed" || len(second.Global.MCP.Servers) != 0 {
 		t.Fatal("defaults share mutable state")
 	}
 	if got := []string{second.Global.Launchers[0].ID, second.Global.Launchers[1].ID, second.Global.Launchers[2].ID}; got[0] != "shell" || got[1] != "lazygit" || got[2] != "nvim" {
@@ -165,6 +172,56 @@ func TestEffectivePreservesExplicitEmptySubagentTools(t *testing.T) {
 	effective.Subagents.Profiles["no-tools"] = AgentProfile{Description: "mutated"}
 	if config.Global.Subagents.Profiles["no-tools"].Description == "mutated" {
 		t.Fatal("effective subagent profiles alias source configuration")
+	}
+}
+
+func TestEffectiveDeepMergesAndCopiesSubagentModelRouting(t *testing.T) {
+	config := DefaultConfig(t.TempDir())
+	controllerModel := "router-model"
+	controllerThinking := ThinkingXHigh
+	routingPrompt := "Use the deep model when the task needs multi-step reasoning."
+	allowedModels := []string{"fast-model", "deep-model"}
+	config.Projects["routed"] = ProjectOverride{
+		Folder: filepath.Join(t.TempDir(), "routed"),
+		Settings: SettingsPatch{Subagents: &SubagentPatch{ModelRouting: &SubagentModelRoutingPatch{
+			ControllerModel:    &controllerModel,
+			ControllerThinking: &controllerThinking,
+			AllowedModels:      &allowedModels,
+		}}},
+	}
+	config.Projects["prompt-only"] = ProjectOverride{
+		Folder: filepath.Join(t.TempDir(), "prompt-only"),
+		Settings: SettingsPatch{Subagents: &SubagentPatch{ModelRouting: &SubagentModelRoutingPatch{
+			Prompt: &routingPrompt,
+		}}},
+	}
+	if err := Validate(config); err != nil {
+		t.Fatal(err)
+	}
+	effective, found := config.Effective("routed")
+	if !found {
+		t.Fatal("project not found")
+	}
+	if effective.Subagents.ModelRouting.ControllerModel != controllerModel ||
+		effective.Subagents.ModelRouting.ControllerThinking != ThinkingXHigh ||
+		effective.Subagents.ModelRouting.Prompt != config.Global.Subagents.ModelRouting.Prompt ||
+		len(effective.Subagents.ModelRouting.AllowedModels) != 2 || effective.Subagents.ModelRouting.AllowedModels[1] != "deep-model" {
+		t.Fatalf("effective model routing = %+v", effective.Subagents.ModelRouting)
+	}
+	effective.Subagents.ModelRouting.AllowedModels[0] = "mutated"
+	if allowedModels[0] == "mutated" || config.Global.Subagents.ModelRouting.AllowedModels[0] == "mutated" {
+		t.Fatal("effective model routing aliases source configuration")
+	}
+	promptOnly, _ := config.Effective("prompt-only")
+	if promptOnly.Subagents.ModelRouting.Prompt != routingPrompt ||
+		promptOnly.Subagents.ModelRouting.ControllerModel != config.Global.Subagents.ModelRouting.ControllerModel ||
+		promptOnly.Subagents.ModelRouting.ControllerThinking != config.Global.Subagents.ModelRouting.ControllerThinking ||
+		len(promptOnly.Subagents.ModelRouting.AllowedModels) != len(config.Global.Subagents.ModelRouting.AllowedModels) {
+		t.Fatalf("prompt-only model routing = %+v", promptOnly.Subagents.ModelRouting)
+	}
+	promptOnly.Subagents.ModelRouting.AllowedModels[0] = "mutated"
+	if config.Global.Subagents.ModelRouting.AllowedModels[0] == "mutated" {
+		t.Fatal("inherited model routing aliases global configuration")
 	}
 }
 

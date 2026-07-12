@@ -121,6 +121,9 @@ func (s *Store) Update(ctx context.Context, expectedRevision uint64, replacement
 	if err != nil {
 		return Config{}, err
 	}
+	if candidate.Version != CurrentVersion {
+		return Config{}, fmt.Errorf("configuration: update uses unsupported version %d; reload version %d before saving", candidate.Version, CurrentVersion)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	raw, err := s.loadOrCreateLocked(ctx)
@@ -166,10 +169,38 @@ func (s *Store) loadOrCreateLocked(ctx context.Context) (Config, error) {
 	if err := ensureEOF(decoder); err != nil {
 		return Config{}, err
 	}
+	migrated, err := s.migrate(&config)
+	if err != nil {
+		return Config{}, err
+	}
 	if err := Validate(config); err != nil {
 		return Config{}, err
 	}
+	if migrated {
+		if err := s.writeLocked(ctx, config); err != nil {
+			return Config{}, fmt.Errorf("configuration: persist migration: %w", err)
+		}
+	}
 	return config, nil
+}
+
+func (s *Store) migrate(config *Config) (bool, error) {
+	if config.Version == CurrentVersion {
+		return false, nil
+	}
+	if config.Version != 1 {
+		return false, fmt.Errorf("configuration: unsupported version %d", config.Version)
+	}
+	routing := &config.Global.Subagents.ModelRouting
+	if routing.ControllerModel == "" && routing.ControllerThinking == "" && routing.Prompt == "" && routing.AllowedModels == nil {
+		*routing = s.defaults.Global.Subagents.ModelRouting
+		routing.AllowedModels = cloneStrings(routing.AllowedModels)
+	} else if routing.ControllerThinking == "" {
+		routing.ControllerThinking = s.defaults.Global.Subagents.ModelRouting.ControllerThinking
+	}
+	config.Version = CurrentVersion
+	config.Revision++
+	return true, nil
 }
 
 func ensureEOF(decoder *json.Decoder) error {

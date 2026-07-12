@@ -10,13 +10,16 @@ import (
 
 func (c *Client) SpawnAgent(ctx context.Context, request agentteam.SpawnRequest) (agentteam.Agent, error) {
 	var result agentteam.Agent
-	command := daemon.Command{
+	err := c.call(ctx, spawnAgentCommand(request), &result)
+	return result, err
+}
+
+func spawnAgentCommand(request agentteam.SpawnRequest) daemon.Command {
+	return daemon.Command{
 		Type: "spawn_agent", ConversationID: request.ParentID, ParentID: request.ParentID,
 		AgentName: request.Name, AgentRole: request.Role, Profile: request.Profile,
-		Task: request.Task, Model: request.Model, Level: request.Thinking, Tools: request.Tools,
+		Task: request.Task, Model: request.Model, Level: request.Thinking, Mode: request.Mode, Tools: request.Tools,
 	}
-	err := c.call(ctx, command, &result)
-	return result, err
 }
 
 func (c *Client) ListAgents(ctx context.Context, callerID string) ([]agentteam.Agent, error) {

@@ -6,7 +6,9 @@ import (
 	"github.com/dire-kiwi/dire-agent/configuration"
 )
 
-// Command is the Pi-inspired WebSocket command envelope.
+// Command is the Pi-inspired WebSocket command envelope. Tools deliberately
+// does not use omitempty: nil means inherit while an explicit empty array means
+// grant no tools, and that distinction is a subagent permission boundary.
 type Command struct {
 	ID                string                `json:"id,omitempty"`
 	Type              string                `json:"type"`
@@ -26,7 +28,7 @@ type Command struct {
 	Model             string                `json:"model,omitempty"`
 	Level             string                `json:"level,omitempty"`
 	Mode              string                `json:"mode,omitempty"`
-	Tools             []string              `json:"tools,omitempty"`
+	Tools             []string              `json:"tools"`
 	AgentID           string                `json:"agent_id,omitempty"`
 	ParentID          string                `json:"parent_id,omitempty"`
 	AgentName         string                `json:"agent_name,omitempty"`

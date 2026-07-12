@@ -92,6 +92,20 @@ func applySubagentPatch(dst *SubagentSettings, patch *SubagentPatch) {
 	if patch.AutoReport != nil {
 		dst.AutoReport = *patch.AutoReport
 	}
+	if routing := patch.ModelRouting; routing != nil {
+		if routing.ControllerModel != nil {
+			dst.ModelRouting.ControllerModel = *routing.ControllerModel
+		}
+		if routing.ControllerThinking != nil {
+			dst.ModelRouting.ControllerThinking = *routing.ControllerThinking
+		}
+		if routing.Prompt != nil {
+			dst.ModelRouting.Prompt = *routing.Prompt
+		}
+		if routing.AllowedModels != nil {
+			dst.ModelRouting.AllowedModels = cloneStrings(*routing.AllowedModels)
+		}
+	}
 	if patch.Profiles != nil {
 		dst.Profiles = cloneAgentProfiles(*patch.Profiles)
 	}

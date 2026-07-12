@@ -129,19 +129,33 @@ function SpawnAgentForm(props: { parent: SubagentInfo | null; models: ModelInfo[
   const [name, setName] = useState("");
   const [task, setTask] = useState("");
   const [role, setRole] = useState("general");
+  const [mode, setMode] = useState<NonNullable<SpawnAgentOptions["mode"]>>("direct");
   const [model, setModel] = useState("");
   const options = mergeModelOptions(props.models);
   return (
-    <form className="spawn-agent-form" onSubmit={(event) => {
+    <form className="spawn-agent-form" aria-label="Spawn agent" onSubmit={(event) => {
       event.preventDefault();
-      void props.onSubmit({ parent_id: props.parent?.id, agent_name: name.trim(), agent_role: role.trim(), profile: role.trim(), task: task.trim(), model: model || undefined });
+      void props.onSubmit({
+        parent_id: props.parent?.id,
+        agent_name: name.trim(),
+        agent_role: role.trim(),
+        profile: role.trim(),
+        task: task.trim(),
+        mode,
+        model: mode === "direct" ? model || undefined : undefined,
+      });
     }}>
+      <label><span>Spawn mode</span><select value={mode} onChange={(event) => setMode(event.target.value as NonNullable<SpawnAgentOptions["mode"]>)}><option value="direct">Direct model</option><option value="model-router">Choose model automatically</option></select></label>
       <div className="field-grid">
         <label><span>Name</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="reviewer" /></label>
         <label><span>Role/profile</span><input value={role} onChange={(event) => setRole(event.target.value)} placeholder="general" /></label>
       </div>
       <label><span>Task</span><textarea rows={3} value={task} onChange={(event) => setTask(event.target.value)} placeholder="Review the authentication flow…" /></label>
-      <label><span>Model</span><select value={model} onChange={(event) => setModel(event.target.value)}><option value="">Inherit parent</option>{options.map((item) => <option value={item.id} key={item.id}>{item.id}</option>)}</select></label>
+      {mode === "direct" ? (
+        <label><span>Model</span><select value={model} onChange={(event) => setModel(event.target.value)}><option value="">Inherit parent</option>{options.map((item) => <option value={item.id} key={item.id}>{item.id}</option>)}</select></label>
+      ) : (
+        <p className="quiet-copy">The configured controller will choose and start one or more workers on allowed models.</p>
+      )}
       <button className="secondary-button full-width" type="submit" disabled={!name.trim() || !task.trim()}><Plus size={13} /> Spawn {props.parent ? `under ${props.parent.agent_name}` : "child agent"}</button>
     </form>
   );
@@ -149,7 +163,7 @@ function SpawnAgentForm(props: { parent: SubagentInfo | null; models: ModelInfo[
 
 function statusClass(status: string): string {
   if (status === "running") return "running";
-  if (status === "error") return "error";
+  if (status === "error" || status === "failed" || status === "interrupted") return "error";
   if (status === "completed") return "completed";
   return "idle";
 }

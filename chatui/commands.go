@@ -139,7 +139,7 @@ const helpText = `Commands:
 /follow-up TEXT   queue the next turn (alias: /followup)
 /abort            cancel the active run
 /agents           list this conversation's agent tree
-/spawn NAME TASK  spawn a general child; use NAME PROFILE -- TASK for a profile
+/spawn NAME TASK  spawn a child; use NAME [PROFILE] [--mode model-router] -- TASK for options
 /message ID TEXT  send and wake an agent (alias: /msg)
 /wait [ID ...]    wait up to 30 seconds for child agents
 /interrupt ID     cancel a running agent

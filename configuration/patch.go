@@ -98,13 +98,21 @@ type PluginPatch = ExtensionPatch
 type PluginSourcePatch = ExtensionSourcePatch
 
 type SubagentPatch struct {
-	Enabled              *bool                    `json:"enabled,omitempty"`
-	MaxDepth             *int                     `json:"max_depth,omitempty"`
-	MaxChildren          *int                     `json:"max_children,omitempty"`
-	MaxConcurrent        *int                     `json:"max_concurrent,omitempty"`
-	AllowSiblingMessages *bool                    `json:"allow_sibling_messages,omitempty"`
-	AutoReport           *bool                    `json:"auto_report,omitempty"`
-	Profiles             *map[string]AgentProfile `json:"profiles,omitempty"`
+	Enabled              *bool                      `json:"enabled,omitempty"`
+	MaxDepth             *int                       `json:"max_depth,omitempty"`
+	MaxChildren          *int                       `json:"max_children,omitempty"`
+	MaxConcurrent        *int                       `json:"max_concurrent,omitempty"`
+	AllowSiblingMessages *bool                      `json:"allow_sibling_messages,omitempty"`
+	AutoReport           *bool                      `json:"auto_report,omitempty"`
+	ModelRouting         *SubagentModelRoutingPatch `json:"model_routing,omitempty"`
+	Profiles             *map[string]AgentProfile   `json:"profiles,omitempty"`
+}
+
+type SubagentModelRoutingPatch struct {
+	ControllerModel    *string        `json:"controller_model,omitempty"`
+	ControllerThinking *ThinkingLevel `json:"controller_thinking,omitempty"`
+	Prompt             *string        `json:"prompt,omitempty"`
+	AllowedModels      *[]string      `json:"allowed_models,omitempty"`
 }
 
 type DesktopPatch struct {

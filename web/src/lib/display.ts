@@ -17,6 +17,7 @@ export const configurationThinkingLevels = [
   "low",
   "medium",
   "high",
+  "xhigh",
   "max",
 ] as const;
 

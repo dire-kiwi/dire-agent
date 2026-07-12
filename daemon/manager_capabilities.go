@@ -47,9 +47,21 @@ func (m *Manager) resolveCapabilities(ctx context.Context, resource threadstore.
 		profiles[name] = profile.Description
 	}
 	canSpawn := settings.Subagents.Enabled && resource.Depth < settings.Subagents.MaxDepth
+	var allowedModels []string
+	var allowedThinking []string
+	requireModel := false
+	var spawnPolicy *agentteam.SpawnRequest
 	if resource.IsSubagent() {
-		profile, exists := settings.Subagents.Profiles[resource.AgentProfile]
-		canSpawn = canSpawn && exists && profile.CanSpawn
+		if resource.AgentProfile == configuration.ModelRouterControllerProfile {
+			allowedModels = append([]string(nil), settings.Subagents.ModelRouting.AllowedModels...)
+			allowedThinking = modelRouterThinkingLevels()
+			requireModel = true
+			spawnPolicy = modelRouterSpawnPolicy(resource.ModelRouterPolicy)
+			canSpawn = canSpawn && len(allowedModels) > 0 && spawnPolicy != nil
+		} else {
+			profile, exists := settings.Subagents.Profiles[resource.AgentProfile]
+			canSpawn = canSpawn && exists && profile.CanSpawn
+		}
 	}
 	if snapshot.Tools == nil {
 		snapshot.Tools = make(map[string]agentloop.Tool)
@@ -80,7 +92,11 @@ func (m *Manager) resolveCapabilities(ctx context.Context, resource threadstore.
 	}
 	var teamTools map[string]agentloop.Tool
 	if settings.Subagents.Enabled {
-		teamTools = agentteam.Tools(m, agentteam.Scope{AgentID: resource.ID, CanSpawn: canSpawn, Profiles: profiles})
+		teamTools = agentteam.Tools(m, agentteam.Scope{
+			AgentID: resource.ID, CanSpawn: canSpawn, Profiles: profiles,
+			AllowedModels: allowedModels, AllowedThinking: allowedThinking,
+			RequireModel: requireModel, SpawnPolicy: spawnPolicy,
+		})
 	}
 	for name, tool := range teamTools {
 		if _, exists := snapshot.Tools[name]; exists {
@@ -93,6 +109,20 @@ func (m *Manager) resolveCapabilities(ctx context.Context, resource threadstore.
 		})
 	}
 	return snapshot, nil
+}
+
+func modelRouterSpawnPolicy(policy *threadstore.RoutedAgentPolicy) *agentteam.SpawnRequest {
+	if policy == nil {
+		return nil
+	}
+	return &agentteam.SpawnRequest{
+		Mode: agentteam.SpawnModeDirect, Profile: policy.Profile, Role: policy.Role,
+		Tools: cloneOptionalStrings(policy.Tools),
+	}
+}
+
+func modelRouterThinkingLevels() []string {
+	return []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 }
 
 func configScopeID(resource threadstore.Thread) string {

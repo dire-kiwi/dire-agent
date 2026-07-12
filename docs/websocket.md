@@ -336,7 +336,7 @@ config_update
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "revision": 3,
   "global": {
     "model": {}, "thinking": {}, "tools": {}, "queues": {},
@@ -351,8 +351,10 @@ Secret MCP/extension environment values and MCP headers are returned as
 `"[redacted]"`. `config_update` replaces the complete document and requires
 `expected_revision` (or the candidate's `revision`). Redacted placeholders
 preserve the previous secrets. A stale revision fails rather than overwriting a
-concurrent edit. Successful updates increment the revision and refresh idle
-capability snapshots.
+concurrent edit. Version 1 files migrate to version 2 on load; updates from an
+older schema must reload before saving so they cannot erase model-routing
+fields. Successful updates increment the revision and refresh idle capability
+snapshots.
 
 `config_validate` validates a complete candidate without persisting it.
 `config_effective` accepts a conversation ID and returns
@@ -365,7 +367,7 @@ Configuration supports:
 - stdio or Streamable HTTP MCP servers, tool allowlists, approval modes,
   environment/headers, and secret markers;
 - local, Git, or registry extension source metadata and trust;
-- child-agent limits and profiles;
+- child-agent limits, profiles, and an allowlisted model-routing controller;
 - desktop paths/sync preferences and standalone-chat defaults.
 
 Only trusted local extension adapters are executed. Git/registry installation
@@ -394,6 +396,7 @@ Spawn example:
   "conversation_id": "project_...",
   "parent_id": "project_...",
   "agent_name": "reviewer",
+  "mode": "direct",
   "profile": "review",
   "agent_role": "security reviewer",
   "task": "Review authentication changes",
@@ -402,6 +405,13 @@ Spawn example:
   "tools": ["read", "grep"]
 }
 ```
+
+To delegate model selection, set `"mode":"model-router"` and omit `model` and
+`level`. The daemon starts the configured controller model/thinking level; the
+controller may decompose the request into multiple workers, but every worker
+must use a model from `global.subagents.model_routing.allowed_models`. The
+daemon preserves the requested profile, role, and tool ceiling regardless of
+what the controller sends.
 
 The child receives a separate `agent_...` conversation and SQLite file, starts
 its task immediately, and cannot gain tools the parent/profile did not grant.
@@ -412,8 +422,9 @@ allow or deny spawning.
 
 `list_agents` uses `parent_id` or the envelope conversation ID. `get_agent`,
 `interrupt_agent`, and `delete_agent` use `agent_id`. `send_agent_message` also
-uses `message`; `wake` defaults to true. Messages are durable and cross-team
-routing is rejected. `wait_agents` accepts optional `agent_ids` and
+uses `message`; `wake` defaults to true. Messages and unread mailbox state are
+durable across restart, with one-time delivery to concurrent waiters;
+cross-team routing is rejected. `wait_agents` accepts optional `agent_ids` and
 `timeout_ms`; the default is 30 seconds and the maximum is 60 seconds.
 
 Agent-team events include:
@@ -431,10 +442,10 @@ agent message.
 ## Persistence and process boundary
 
 Each project, standalone chat, and child agent owns `<id>.db`. Provider state is
-restored lazily after restart; a conversation recorded as running after an
-unclean shutdown recovers as idle. Messages, events, usage, and tool records
-remain queryable when no client was connected. Existing `thread_*.db` files
-remain valid.
+restored lazily, while stale running metadata is repaired eagerly at daemon
+startup: roots recover as idle and child agents as interrupted. Messages,
+unread mailboxes, events, usage, and tool records remain queryable when no
+client was connected. Existing `thread_*.db` files remain valid.
 
 Project file tools enforce canonical containment across the main project folder
 and its included folders. Relative paths resolve from the main folder;

@@ -4,13 +4,13 @@ package daemon
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"sync/atomic"
 
 	"github.com/dire-kiwi/dire-agent/agent"
 	"github.com/dire-kiwi/dire-agent/agentloop"
-	"github.com/dire-kiwi/dire-agent/agentteam"
 	"github.com/dire-kiwi/dire-agent/capability"
 	"github.com/dire-kiwi/dire-agent/configuration"
 	"github.com/dire-kiwi/dire-agent/skills"
@@ -40,9 +40,8 @@ type Manager struct {
 	subscribers map[string]map[uint64]chan Event
 	nextSubID   atomic.Uint64
 
-	teamMu        sync.Mutex
-	teamSignals   map[string]chan struct{}
-	teamMailboxes map[string][]agentteam.Message
+	teamMu      sync.Mutex
+	teamSignals map[string]chan struct{}
 }
 
 type threadRuntime struct {
@@ -106,11 +105,51 @@ func NewManager(config ManagerConfig) (*Manager, error) {
 		}
 	}
 	config.AvailableModels = normalizeModels(config.AvailableModels, config.DefaultProvider, config.DefaultModel)
+	if err := recoverPersistedRuns(context.Background(), config.Store); err != nil {
+		return nil, err
+	}
 	return &Manager{
-		config:        config,
-		runtimes:      make(map[string]*threadRuntime),
-		subscribers:   make(map[string]map[uint64]chan Event),
-		teamSignals:   make(map[string]chan struct{}),
-		teamMailboxes: make(map[string][]agentteam.Message),
+		config:      config,
+		runtimes:    make(map[string]*threadRuntime),
+		subscribers: make(map[string]map[uint64]chan Event),
+		teamSignals: make(map[string]chan struct{}),
 	}, nil
+}
+
+// recoverPersistedRuns runs before any runtime or provider session is opened.
+// A newly constructed manager has no live goroutines, so every stored running
+// status belongs to a process that is no longer executing it.
+func recoverPersistedRuns(ctx context.Context, store *threadstore.Store) error {
+	threads, err := store.List(ctx)
+	if err != nil {
+		return fmt.Errorf("daemon: list conversations for run recovery: %w", err)
+	}
+	for _, thread := range threads {
+		if thread.Status != "running" {
+			continue
+		}
+		db, err := store.Open(ctx, thread.ID)
+		if err != nil {
+			return fmt.Errorf("daemon: open %s for run recovery: %w", thread.ID, err)
+		}
+		_, updateErr := db.UpdateThread(ctx, func(stored *threadstore.Thread) error {
+			stored.Status = recoveredRunStatus(*stored)
+			return nil
+		})
+		closeErr := db.Close()
+		if updateErr != nil {
+			return fmt.Errorf("daemon: recover interrupted conversation %s: %w", thread.ID, updateErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("daemon: close recovered conversation %s: %w", thread.ID, closeErr)
+		}
+	}
+	return nil
+}
+
+func recoveredRunStatus(thread threadstore.Thread) string {
+	if thread.IsSubagent() {
+		return "interrupted"
+	}
+	return "idle"
 }

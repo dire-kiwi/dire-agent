@@ -55,7 +55,7 @@ func (m *Manager) SendAgentMessage(ctx context.Context, fromID, toID, content st
 	if err != nil {
 		return agentteam.Message{}, err
 	}
-	if _, err := targetRuntime.db.AppendMessage(ctx, threadstore.Message{
+	if _, err := targetRuntime.db.AppendMailboxMessage(ctx, threadstore.Message{
 		Kind: "agent_message", Role: "agent", Content: content, Data: data,
 	}); err != nil {
 		return agentteam.Message{}, err
@@ -67,7 +67,6 @@ func (m *Manager) SendAgentMessage(ctx context.Context, fromID, toID, content st
 
 	rootID := teamRootID(from)
 	m.teamMu.Lock()
-	m.teamMailboxes[to.ID] = append(m.teamMailboxes[to.ID], message)
 	m.notifyTeamLocked(rootID)
 	m.teamMu.Unlock()
 	if !wake {
@@ -98,7 +97,6 @@ func (m *Manager) WaitAgents(ctx context.Context, callerID string, ids []string,
 	for {
 		m.teamMu.Lock()
 		signal := m.teamSignalLocked(rootID)
-		hasMessages := len(m.teamMailboxes[caller.ID]) != 0
 		m.teamMu.Unlock()
 
 		agents, err := m.ListAgents(ctx, caller.ID)
@@ -109,32 +107,62 @@ func (m *Manager) WaitAgents(ctx context.Context, callerID string, ids []string,
 		if err != nil {
 			return agentteam.WaitResult{}, err
 		}
-		if hasMessages || agentsReady(selected) {
-			return agentteam.WaitResult{Agents: selected, Messages: m.drainAgentMailbox(caller.ID)}, nil
+		messages, err := m.drainAgentMailbox(ctx, caller.ID)
+		if err != nil {
+			return agentteam.WaitResult{}, err
+		}
+		if len(messages) != 0 || agentsReady(selected) {
+			return agentteam.WaitResult{Agents: selected, Messages: messages}, nil
 		}
 		select {
 		case <-ctx.Done():
 			return agentteam.WaitResult{}, ctx.Err()
 		case <-deadline.C:
-			messages := m.drainAgentMailbox(caller.ID)
+			messages, err := m.drainAgentMailbox(ctx, caller.ID)
+			if err != nil {
+				return agentteam.WaitResult{}, err
+			}
 			return agentteam.WaitResult{Agents: selected, Messages: messages, TimedOut: len(messages) == 0}, nil
 		case <-signal:
 		}
 	}
 }
 
-func (m *Manager) drainAgentMailbox(id string) []agentteam.Message {
-	m.teamMu.Lock()
-	defer m.teamMu.Unlock()
-	messages := append([]agentteam.Message(nil), m.teamMailboxes[id]...)
-	delete(m.teamMailboxes, id)
-	return messages
+func (m *Manager) drainAgentMailbox(ctx context.Context, id string) ([]agentteam.Message, error) {
+	runtime, err := m.getRuntime(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	stored, err := runtime.db.DrainMailboxMessages(ctx)
+	if err != nil {
+		return nil, err
+	}
+	messages := make([]agentteam.Message, 0, len(stored))
+	for _, entry := range stored {
+		var message agentteam.Message
+		if err := json.Unmarshal(entry.Data, &message); err != nil {
+			return nil, fmt.Errorf("daemon: decode persisted agent message: %w", err)
+		}
+		messages = append(messages, message)
+	}
+	return messages, nil
 }
 
 func (m *Manager) InterruptAgent(ctx context.Context, callerID, targetID string) error {
 	from, target, _, err := m.authorizeTeamRoute(ctx, callerID, targetID)
 	if err != nil {
 		return err
+	}
+	members, err := m.listTeamThreads(ctx, teamRootID(from))
+	if err != nil {
+		return err
+	}
+	byID := make(map[string]threadstore.Thread, len(members))
+	for _, member := range members {
+		byID[member.ID] = member
+	}
+	if isAncestor(target.ID, from.ID, byID) {
+		return errors.New("daemon: an agent cannot interrupt an ancestor")
 	}
 	if err := m.Abort(ctx, target.ID); err != nil {
 		return err

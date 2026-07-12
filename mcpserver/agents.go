@@ -17,6 +17,7 @@ type listAgentsInput struct {
 type spawnAgentInput struct {
 	ParentID string   `json:"parent_id"`
 	Name     string   `json:"name"`
+	Mode     string   `json:"mode,omitempty" jsonschema:"spawn mode: direct or model-router"`
 	Profile  string   `json:"profile,omitempty"`
 	Role     string   `json:"role,omitempty"`
 	Task     string   `json:"task"`
@@ -49,10 +50,10 @@ func (s *Server) addAgentTools() {
 			value, err := s.daemon.ListAgents(ctx, input.ConversationID)
 			return toolResult(value, err)
 		})
-	mcp.AddTool(s.server, &mcp.Tool{Name: "dire_agent_spawn_agent", Description: "Spawn a bounded persistent child agent with inherited project and tool permissions."},
+	mcp.AddTool(s.server, &mcp.Tool{Name: "dire_agent_spawn_agent", Description: "Spawn a bounded persistent child agent with inherited project and tool permissions. Set mode to model-router to let a controller select an allowed model and delegate the task."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, input spawnAgentInput) (*mcp.CallToolResult, any, error) {
 			value, err := s.daemon.SpawnAgent(ctx, agentteam.SpawnRequest{
-				ParentID: input.ParentID, Name: input.Name, Profile: input.Profile, Role: input.Role,
+				ParentID: input.ParentID, Name: input.Name, Mode: input.Mode, Profile: input.Profile, Role: input.Role,
 				Task: input.Task, Model: input.Model, Thinking: input.Thinking, Tools: input.Tools,
 			})
 			return toolResult(value, err)

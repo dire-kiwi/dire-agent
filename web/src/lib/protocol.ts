@@ -6,6 +6,7 @@ export type {
   ExtensionSourceConfig,
   GlobalSettings,
   MCPServerConfig,
+  ModelRoutingSettings,
   ProjectLauncher,
   ProjectLauncherKind,
   StandaloneChatSettings,

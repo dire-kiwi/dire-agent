@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS messages (
     data BLOB,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS agent_mailbox (
+    message_sequence INTEGER PRIMARY KEY,
+    FOREIGN KEY(message_sequence) REFERENCES messages(sequence) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS events (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
     type TEXT NOT NULL,

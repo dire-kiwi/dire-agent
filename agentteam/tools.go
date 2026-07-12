@@ -65,13 +65,44 @@ func newSpawnTool(backend Backend, scope Scope) *tool {
 		profiles = append(profiles, name+": "+description)
 	}
 	sort.Strings(profiles)
-	description := "Spawn a persistent child agent for an independent task. The child inherits this conversation's folder sandbox and cannot gain tools the parent lacks."
+	description := "Spawn a persistent child agent for an independent task. The child inherits this conversation's folder sandbox and cannot gain tools the parent lacks. Set mode to model-router to start the configured controller, which can decompose the request and choose allowlisted worker models."
 	if len(profiles) > 0 {
 		description += " Profiles: " + strings.Join(profiles, "; ")
 	}
+	allowedModels := normalizedStrings(scope.AllowedModels)
+	if len(allowedModels) > 0 {
+		description += " The model must be selected from: " + strings.Join(allowedModels, ", ") + "."
+	}
+	allowedThinking := normalizedStrings(scope.AllowedThinking)
+	if scope.SpawnPolicy != nil {
+		description = "Spawn one bounded worker subtask. Choose a distinct name, focused task, allowed model, and appropriate thinking level. The worker profile, role, and tool permissions are fixed by the parent request. Call this tool again for additional independent subtasks."
+		if len(allowedModels) > 0 {
+			description += " Allowed models: " + strings.Join(allowedModels, ", ") + "."
+		}
+		if len(allowedThinking) > 0 {
+			description += " Thinking levels: " + strings.Join(allowedThinking, ", ") + "."
+		}
+	}
 	return &tool{backend: backend, scope: scope,
-		definition: definition("spawn_agent", description, `{"type":"object","properties":{"name":{"type":"string"},"profile":{"type":"string"},"role":{"type":"string"},"task":{"type":"string"},"model":{"type":"string"},"thinking":{"type":"string"},"tools":{"type":"array","items":{"type":"string"}}},"required":["name","task"],"additionalProperties":false}`),
+		definition: definition("spawn_agent", description, spawnSchema(allowedModels, allowedThinking, scope.RequireModel, scope.SpawnPolicy != nil)),
 		execute: func(ctx context.Context, input map[string]json.RawMessage) (any, error) {
+			if scope.SpawnPolicy != nil {
+				var args struct {
+					Name     string `json:"name"`
+					Task     string `json:"task"`
+					Model    string `json:"model"`
+					Thinking string `json:"thinking"`
+				}
+				if err := remarshal(input, &args); err != nil {
+					return nil, err
+				}
+				request := *scope.SpawnPolicy
+				request.ParentID = scope.AgentID
+				request.Name, request.Task = args.Name, args.Task
+				request.Model, request.Thinking = args.Model, args.Thinking
+				request.Tools = cloneOptionalStrings(scope.SpawnPolicy.Tools)
+				return backend.SpawnAgent(ctx, request)
+			}
 			var request SpawnRequest
 			if err := remarshal(input, &request); err != nil {
 				return nil, err
@@ -80,6 +111,74 @@ func newSpawnTool(backend Backend, scope Scope) *tool {
 			return backend.SpawnAgent(ctx, request)
 		},
 	}
+}
+
+func spawnSchema(allowedModels, allowedThinking []string, requireModel, routedWorker bool) string {
+	model := map[string]any{"type": "string"}
+	if len(allowedModels) > 0 {
+		model["enum"] = allowedModels
+	}
+	required := []string{"name", "task"}
+	if requireModel {
+		required = append(required, "model")
+	}
+	if routedWorker {
+		thinking := map[string]any{"type": "string"}
+		if len(allowedThinking) > 0 {
+			thinking["enum"] = allowedThinking
+		}
+		required = []string{"name", "task", "model", "thinking"}
+		schema := map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name": map[string]any{"type": "string"}, "task": map[string]any{"type": "string"},
+				"model": model, "thinking": thinking,
+			},
+			"required":             required,
+			"additionalProperties": false,
+		}
+		data, _ := json.Marshal(schema)
+		return string(data)
+	}
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name":     map[string]any{"type": "string"},
+			"mode":     map[string]any{"type": "string", "enum": []string{SpawnModeDirect, SpawnModeModelRouter}},
+			"profile":  map[string]any{"type": "string"},
+			"role":     map[string]any{"type": "string"},
+			"task":     map[string]any{"type": "string"},
+			"model":    model,
+			"thinking": map[string]any{"type": "string"},
+			"tools":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		},
+		"required":             required,
+		"additionalProperties": false,
+	}
+	data, _ := json.Marshal(schema)
+	return string(data)
+}
+
+func normalizedStrings(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func cloneOptionalStrings(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	return append([]string{}, values...)
 }
 
 func newListTool(backend Backend, scope Scope) *tool {

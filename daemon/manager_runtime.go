@@ -92,7 +92,11 @@ func (m *Manager) runtimeFromDB(ctx context.Context, db *threadstore.ThreadDB, t
 		return nil, errors.New("daemon: provider session does not support persistence")
 	}
 	if thread.Status == "running" {
-		thread.Status = "idle"
+		// A process restart cannot resume the in-flight provider call. Root
+		// conversations become idle, while subagents must retain a terminal
+		// lifecycle state so waiters do not mistake a crashed run for a
+		// successfully settled child.
+		thread.Status = recoveredRunStatus(thread)
 		thread.UpdatedAt = time.Now().UTC()
 		if _, err := db.UpdateThread(ctx, func(stored *threadstore.Thread) error {
 			*stored = thread
@@ -144,7 +148,6 @@ func (m *Manager) DeleteThread(ctx context.Context, id string) error {
 	if err := m.config.Store.Delete(id); err != nil {
 		return err
 	}
-	delete(m.teamMailboxes, id)
 	m.notifyTeamLocked(teamRootID(thread))
 	return nil
 }
@@ -240,5 +243,10 @@ func (r *threadRuntime) snapshotThread() threadstore.Thread {
 	thread := r.thread
 	thread.Tools = append([]string(nil), thread.Tools...)
 	thread.AdditionalFolders = append([]string(nil), thread.AdditionalFolders...)
+	if thread.ModelRouterPolicy != nil {
+		policy := *thread.ModelRouterPolicy
+		policy.Tools = cloneOptionalStrings(policy.Tools)
+		thread.ModelRouterPolicy = &policy
+	}
 	return thread
 }

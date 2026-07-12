@@ -2,8 +2,12 @@
 package configuration
 
 const (
-	CurrentVersion = 1
+	CurrentVersion = 2
 	RedactedValue  = "[redacted]"
+
+	// ModelRouterControllerProfile is reserved for the synthetic controller
+	// agent created by model-routed subagent mode.
+	ModelRouterControllerProfile = "model-router-controller"
 )
 
 type ThinkingLevel string
@@ -22,6 +26,7 @@ const (
 	ThinkingLow     ThinkingLevel = "low"
 	ThinkingMedium  ThinkingLevel = "medium"
 	ThinkingHigh    ThinkingLevel = "high"
+	ThinkingXHigh   ThinkingLevel = "xhigh"
 	ThinkingMax     ThinkingLevel = "max"
 
 	ApprovalNever     ApprovalMode = "never"
@@ -155,13 +160,21 @@ type ExtensionSource struct {
 }
 
 type SubagentSettings struct {
-	Enabled              bool                    `json:"enabled"`
-	MaxDepth             int                     `json:"max_depth"`
-	MaxChildren          int                     `json:"max_children"`
-	MaxConcurrent        int                     `json:"max_concurrent"`
-	AllowSiblingMessages bool                    `json:"allow_sibling_messages"`
-	AutoReport           bool                    `json:"auto_report"`
-	Profiles             map[string]AgentProfile `json:"profiles"`
+	Enabled              bool                         `json:"enabled"`
+	MaxDepth             int                          `json:"max_depth"`
+	MaxChildren          int                          `json:"max_children"`
+	MaxConcurrent        int                          `json:"max_concurrent"`
+	AllowSiblingMessages bool                         `json:"allow_sibling_messages"`
+	AutoReport           bool                         `json:"auto_report"`
+	ModelRouting         SubagentModelRoutingSettings `json:"model_routing"`
+	Profiles             map[string]AgentProfile      `json:"profiles"`
+}
+
+type SubagentModelRoutingSettings struct {
+	ControllerModel    string        `json:"controller_model"`
+	ControllerThinking ThinkingLevel `json:"controller_thinking"`
+	Prompt             string        `json:"prompt"`
+	AllowedModels      []string      `json:"allowed_models"`
 }
 
 type AgentProfile struct {

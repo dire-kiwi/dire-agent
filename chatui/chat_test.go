@@ -128,6 +128,17 @@ func TestParseSpawnRequest(t *testing.T) {
 	if err != nil || request.Profile != "general" || request.Task != "inspect files" {
 		t.Fatalf("default request = %+v, err=%v", request, err)
 	}
+	request, err = parseSpawnRequest("project_1", "router review --mode model-router -- choose a model and delegate")
+	if err != nil || request.Mode != agentteam.SpawnModeModelRouter || request.Profile != "review" || request.Task != "choose a model and delegate" {
+		t.Fatalf("model-router request = %+v, err=%v", request, err)
+	}
+	request, err = parseSpawnRequest("project_1", "router --mode=model-router -- delegate")
+	if err != nil || request.Mode != agentteam.SpawnModeModelRouter || request.Profile != "general" {
+		t.Fatalf("equals-mode request = %+v, err=%v", request, err)
+	}
+	if _, err := parseSpawnRequest("project_1", "router --mode -- delegate"); err == nil {
+		t.Fatal("missing mode value did not return an error")
+	}
 }
 
 func TestSubmitRoutesInteractiveCommands(t *testing.T) {

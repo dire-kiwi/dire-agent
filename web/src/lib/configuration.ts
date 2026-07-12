@@ -75,7 +75,16 @@ export interface SubagentSettings {
   max_concurrent: number;
   allow_sibling_messages: boolean;
   auto_report: boolean;
+  model_routing: ModelRoutingSettings;
   profiles: Record<string, AgentProfile>;
+}
+
+export interface ModelRoutingSettings {
+  controller_model: string;
+  /** Empty is a legacy-compatible request to inherit the parent conversation. */
+  controller_thinking: ThinkingLevel | "";
+  prompt: string;
+  allowed_models: string[];
 }
 
 export interface AgentProfile {

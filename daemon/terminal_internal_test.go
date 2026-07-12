@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/imeredith/dire-agent/configuration"
+	"github.com/dire-kiwi/dire-agent/configuration"
 )
 
 func TestTerminalEnvironmentEnablesTrueColorAndRemovesColorOptOuts(t *testing.T) {

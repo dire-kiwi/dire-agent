@@ -8,8 +8,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/imeredith/dire-agent/configuration"
-	"github.com/imeredith/dire-agent/mcpclient"
+	"github.com/dire-kiwi/dire-agent/configuration"
+	"github.com/dire-kiwi/dire-agent/mcpclient"
 )
 
 func TestMCPSourceConnectsCachesAndFiltersTools(t *testing.T) {

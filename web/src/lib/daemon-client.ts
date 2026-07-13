@@ -11,6 +11,7 @@ import type {
   Project,
   ProjectEnvironment,
   ProjectLauncher,
+  ProjectSandboxSettings,
   ProjectWorkspaceInspection,
   RuntimeState,
   StoredEvent,
@@ -195,6 +196,21 @@ export class DaemonClient extends DaemonTransport {
       type: "get_project_launchers",
       ...conversationScope(project),
     }).then((value) => value ?? []);
+  }
+
+  getProjectSandbox(project: Conversation): Promise<ProjectSandboxSettings> {
+    return this.request<ProjectSandboxSettings>({
+      type: "get_project_sandbox",
+      ...conversationScope(project),
+    });
+  }
+
+  setProjectSandbox(project: Conversation, sandbox: ProjectSandboxSettings["effective"] | "inherit"): Promise<ProjectSandboxSettings> {
+    return this.request<ProjectSandboxSettings>({
+      type: "set_project_sandbox",
+      ...conversationScope(project),
+      sandbox,
+    });
   }
 
   launchProjectApp(project: Conversation, launcherID: string): Promise<{ launched: boolean; id: string; label?: string }> {

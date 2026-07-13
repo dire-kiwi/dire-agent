@@ -51,18 +51,30 @@ additional folder is addressed by its absolute path. New projects receive only
 containment across the configured roots; `write` and `edit` cannot escape the
 project sandbox.
 
-`bash` runs through macOS `/usr/bin/sandbox-exec`, with the main project folder,
-included folders, and temporary directories writable and network access denied.
-It fails closed when the sandbox is unavailable. Linux builds currently support
-the file tools and clients, but the `bash` tool and sandboxed local MCP/extension
-processes remain unavailable until a Linux process sandbox is implemented.
-Configured stdio MCP servers and trusted extension processes receive the same
-included folders and are also wrapped by `sandbox-exec` unless their sandbox
-mode is explicitly `off`:
+`bash` runs through the native process sandbox: macOS
+`/usr/bin/sandbox-exec` or Linux `/usr/bin/bwrap`. The main project folder and
+included folders are writable and network access is denied. Bubblewrap uses an
+empty mount namespace with selected system/toolchain paths read-only, fresh
+`/proc` and `/dev`, and private temporary filesystems; home directories and
+broad host runtime trees such as `/run` and `/var` are not mounted. Process
+tools fail closed when the platform sandbox is unavailable. Configured stdio
+MCP servers and trusted extension processes receive the same included folders
+and are wrapped by the same native sandbox unless their mode is explicitly
+`off`:
 
 - `strict`: project sandbox/temp writes only; network denied.
 - `workspace`: the same file boundary with network allowed.
 - `off`: no process sandbox; the child has the daemon user's permissions.
+
+The Settings page selects the global process-sandbox default. In a project's
+details drawer, **Process sandbox** can override it or select **Disabled**;
+choosing **Use global default** removes that project override. Worktrees share
+their source project's sandbox policy.
+
+Sandboxed launches remove dynamic-loader control variables such as `LD_*`,
+`DYLD_*`, and `GCONV_PATH` from the child environment because a platform loader
+would otherwise interpret them before the sandbox wrapper establishes the
+boundary.
 
 Standalone chats never receive the local built-ins. They may still use trusted
 skills, enabled MCP tools, extensions, and agent-team tools. Remote HTTP MCP
@@ -78,7 +90,7 @@ The browser sends only a configured launcher ID; the daemon resolves its direct
 executable and argument list without invoking a shell. Terminal/TUI processes
 start in the selected project folder and desktop applications open on the
 machine running the daemon. Both have the daemon user's normal permissions and
-are outside the agent's `sandbox-exec` boundary. Agent `bash`, stdio MCP, and
+are outside the agent process-sandbox boundary. Agent `bash`, stdio MCP, and
 extension execution retain the sandbox policy described above.
 
 Repository-local environment setup and action commands are trusted project
@@ -116,6 +128,13 @@ The installer verifies the release SHA-256 checksum and puts `dire-agent` in a
 writable directory already on `PATH` when possible. Set `DIRE_AGENT_INSTALL_DIR`
 to choose another directory, or `DIRE_AGENT_VERSION` to install a particular
 release.
+
+Linux process sandboxing is a lazy external dependency. Install your
+distribution's `bubblewrap` package (version 0.5.0 or newer) so that
+`/usr/bin/bwrap` is available if you enable `bash` or sandboxed local
+MCP/extension processes. File-only projects and clients do not require it. The
+host kernel or container must also permit unprivileged user and mount
+namespaces.
 
 For an existing installation, prefer `dire-agent upgrade`; it coordinates the
 binary replacement with the managed daemon and restarts it when necessary.
@@ -508,7 +527,7 @@ performed by the daemon.
 - `provider/codex`: direct Codex credentials, HTTP/SSE, state, and tool calls.
 - `threadstore`: per-conversation SQLite persistence; the historical name is
   retained for compatibility.
-- `tools`: confined built-ins and reusable macOS process sandboxing.
+- `tools`: confined built-ins and reusable macOS/Linux process sandboxing.
 - `skills`, `mcpclient`, `extensions`, `capability`: discovery, transports,
   trust/policy, hooks, and per-run capability composition.
 - `agentteam`: persistent child-agent model tools and shared types.
@@ -522,8 +541,9 @@ performed by the daemon.
 - The ChatGPT subscription endpoint is not a public, supported OpenAI API and
   can change without compatibility guarantees. A supported Platform provider
   can be added behind the existing interfaces.
-- Process sandboxing currently depends on macOS `sandbox-exec`. Sandboxed local
-  tools/MCP/extensions fail closed on unsupported hosts.
+- Process sandboxing depends on macOS `sandbox-exec` or Linux Bubblewrap.
+  Sandboxed local tools/MCP/extensions fail closed when the executable is
+  missing or the host/container blocks the required namespaces.
 - There is no interactive approval broker yet. MCP tools configured as
   `on-request` or `always` are reported as approval-required and are not exposed
   to the model; explicitly trusted tools require `approval: "never"`.

@@ -411,6 +411,7 @@ set_steering_mode
 set_follow_up_mode
 set_tools
 set_project_sandbox_folders
+get_project_sandbox, set_project_sandbox
 get_available_tools
 get_available_models
 get_capabilities
@@ -438,6 +439,22 @@ The daemon deduplicates canonical paths, omits folders already contained by the
 main project folder, and permits at most 16 additions. Updating this setting
 reopens the provider session so its system instructions immediately identify
 the main folder and every included folder.
+
+Read a project's effective process-sandbox policy, or set an explicit project
+override. `inherit` removes the override and restores the global default:
+
+```json
+{
+  "id": "req-sandbox",
+  "type": "set_project_sandbox",
+  "project_id": "project_...",
+  "sandbox": "off"
+}
+```
+
+`get_project_sandbox` and `set_project_sandbox` return `global`, `effective`,
+and (when set) `override`. Valid values are `strict`, `workspace`, `off`, and
+`inherit` for `set_project_sandbox`.
 
 ## Project attachments and terminal PTY
 
@@ -658,12 +675,14 @@ fails is automatically force-rolled back.
 
 Project file tools enforce canonical containment across the main project folder
 and its included folders. Relative paths resolve from the main folder;
-additional roots require absolute paths. `bash` uses macOS `sandbox-exec` with
-network and outside-sandbox writes denied. Stdio MCP and trusted extension
-processes inherit the included writable roots and use the configured `strict`,
-`workspace`, or `off` sandbox policy; sandboxed launches fail closed when
-`sandbox-exec` is unavailable. Child agents inherit their parent project's
-folder set. Remote MCP calls are outside that filesystem boundary.
+additional roots require absolute paths. `bash` uses macOS `sandbox-exec` or
+Linux Bubblewrap with network and outside-sandbox writes denied. On Linux, an
+empty mount namespace also keeps home directories and broad host runtime trees
+out of view and provides private temporary filesystems. Stdio MCP and trusted
+extension processes inherit the included writable roots and use the configured
+`strict`, `workspace`, or `off` sandbox policy; sandboxed launches fail closed
+when the native sandbox is unavailable. Child agents inherit their parent
+project's folder set. Remote MCP calls are outside that filesystem boundary.
 
 ## Current protocol limitations
 

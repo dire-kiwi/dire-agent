@@ -8,8 +8,10 @@ import {
   type Command,
   type Conversation,
   type ModelInfo,
+  type ProjectSandboxSettings,
   type QueueMode,
   type RuntimeState,
+  type SandboxMode,
 } from "../../lib/protocol";
 import { UsageSummary } from "./UsageSummary";
 import { SubagentPanel } from "./SubagentPanel";
@@ -31,10 +33,13 @@ interface DrawerProps {
   tools: string[];
   subagents: SubagentController;
   capabilityCommands: CapabilityCommandController;
+  projectSandbox: ProjectSandboxSettings | null;
+  projectSandboxLoading: boolean;
   onClose: () => void;
   onUpdate: (command: Omit<Command, "id">, notice?: string) => Promise<Conversation | null>;
   onDelete: (conversation: Conversation) => Promise<void>;
   onManageEnvironments: (project: Conversation) => void;
+  onProjectSandboxChange: (mode: SandboxMode | "inherit") => Promise<void>;
 }
 
 export function ConversationDrawer(props: DrawerProps) {
@@ -180,6 +185,32 @@ export function ConversationDrawer(props: DrawerProps) {
                 >
                   <Braces size={14} /> Manage local environments
                 </button>
+              </section>
+            )}
+
+            {!isChat && (
+              <section className="drawer-section">
+                <div className="section-title">
+                  <span>Process sandbox</span>
+                  <small>{props.projectSandbox?.effective === "off" ? "Disabled" : props.projectSandbox?.effective || "Loading…"}</small>
+                </div>
+                <label className="settings-field">
+                  <span>Policy</span>
+                  <select
+                    aria-label="Process sandbox"
+                    value={props.projectSandbox?.override ?? "inherit"}
+                    disabled={running || props.projectSandboxLoading}
+                    onChange={(event) => void props.onProjectSandboxChange(event.target.value as SandboxMode | "inherit")}
+                  >
+                    <option value="inherit">Use global default ({props.projectSandbox?.global || "strict"})</option>
+                    <option value="strict">Strict</option>
+                    <option value="workspace">Workspace</option>
+                    <option value="off">Disabled</option>
+                  </select>
+                  <small>{props.projectSandbox?.effective === "off"
+                    ? "Local processes run with the daemon user's permissions."
+                    : "This controls bash, local MCP servers, and trusted extension processes."}</small>
+                </label>
               </section>
             )}
 

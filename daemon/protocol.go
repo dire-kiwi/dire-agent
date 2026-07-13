@@ -27,6 +27,7 @@ type Command struct {
 	Model             string                `json:"model,omitempty"`
 	Level             string                `json:"level,omitempty"`
 	Mode              string                `json:"mode,omitempty"`
+	Sandbox           string                `json:"sandbox,omitempty"`
 	Tools             []string              `json:"tools,omitempty"`
 	AgentID           string                `json:"agent_id,omitempty"`
 	ParentID          string                `json:"parent_id,omitempty"`

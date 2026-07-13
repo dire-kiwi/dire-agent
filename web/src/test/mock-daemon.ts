@@ -11,6 +11,7 @@ import type {
   ModelInfo,
   ProjectLauncher,
   ProjectEnvironment,
+  ProjectSandboxSettings,
   ProjectWorkspaceInspection,
   RuntimeState,
   SpawnAgentOptions,
@@ -124,6 +125,7 @@ export const mockState = {
   capabilityCommandError: "",
   environments: [] as ProjectEnvironment[],
   workspaceInspections: {} as Record<string, ProjectWorkspaceInspection>,
+  projectSandbox: { global: "strict", effective: "strict" } as ProjectSandboxSettings,
   createProjectWaiter: null as Promise<void> | null,
 };
 
@@ -143,6 +145,7 @@ export function resetMockDaemon() {
   mockState.capabilityCommandError = "";
   mockState.environments = [];
   mockState.workspaceInspections = {};
+  mockState.projectSandbox = { global: "strict", effective: "strict" };
   mockState.createProjectWaiter = null;
 }
 
@@ -172,6 +175,20 @@ export class MockDaemonClient {
   async getProjectLaunchers(project: Conversation): Promise<ProjectLauncher[]> {
     this.record({ type: "get_project_launchers", ...conversationScope(project) });
     return structuredClone(mockState.config.global.launchers ?? []);
+  }
+  async getProjectSandbox(project: Conversation): Promise<ProjectSandboxSettings> {
+    this.record({ type: "get_project_sandbox", ...conversationScope(project) });
+    return structuredClone(mockState.projectSandbox);
+  }
+  async setProjectSandbox(project: Conversation, sandbox: ProjectSandboxSettings["effective"] | "inherit"): Promise<ProjectSandboxSettings> {
+    this.record({ type: "set_project_sandbox", ...conversationScope(project), sandbox });
+    const override = sandbox === "inherit" ? undefined : sandbox;
+    mockState.projectSandbox = {
+      global: mockState.config.global.tools.sandbox,
+      effective: override ?? mockState.config.global.tools.sandbox,
+      ...(override ? { override } : {}),
+    };
+    return structuredClone(mockState.projectSandbox);
   }
   async inspectProjectWorkspace(folder: string): Promise<ProjectWorkspaceInspection> {
     this.record({ type: "inspect_project_workspace", folder });

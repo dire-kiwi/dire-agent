@@ -146,10 +146,18 @@ export class DaemonClient extends DaemonTransport {
   }
 
   getCapabilities(conversation: Conversation): Promise<CapabilityState> {
-    return this.request<CapabilityState>({
+    return this.request<{
+      capabilities?: CapabilityState["capabilities"] | null;
+      skills?: CapabilityState["skills"] | null;
+      skill_diagnostics?: CapabilityState["skill_diagnostics"] | null;
+    } | null>({
       type: "get_capabilities",
       ...conversationScope(conversation),
-    });
+    }).then((value) => ({
+      capabilities: value?.capabilities ?? [],
+      skills: value?.skills ?? [],
+      skill_diagnostics: value?.skill_diagnostics ?? [],
+    }));
   }
 
   listCapabilityCommands(conversation: Conversation): Promise<CapabilityCommandInfo[]> {

@@ -161,9 +161,9 @@ func (m *Manager) CapabilityState(ctx context.Context, id string) (CapabilitySta
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
 	return CapabilityState{
-		Capabilities:     append([]capability.Descriptor(nil), runtime.capabilities...),
-		Skills:           append([]skills.Skill(nil), runtime.skills...),
-		SkillDiagnostics: append([]skills.Diagnostic(nil), runtime.skillDiagnostics...),
+		Capabilities:     append([]capability.Descriptor{}, runtime.capabilities...),
+		Skills:           append([]skills.Skill{}, runtime.skills...),
+		SkillDiagnostics: append([]skills.Diagnostic{}, runtime.skillDiagnostics...),
 	}, nil
 }
 

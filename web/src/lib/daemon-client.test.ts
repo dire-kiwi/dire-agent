@@ -149,6 +149,35 @@ describe("DaemonClient", () => {
     await expect(result).resolves.toBeUndefined();
   });
 
+  it("normalizes nullable capability collections from deployed daemons", async () => {
+    const { client, socket } = harness();
+    const connecting = client.connect();
+    socket().open();
+    await connecting;
+    const project = {
+      id: "project_1", kind: "project" as const, model: "gpt-test", thinking_level: "medium" as const,
+      steering_mode: "one-at-a-time" as const, follow_up_mode: "one-at-a-time" as const,
+      tools: [], status: "idle", created_at: "now", updated_at: "now",
+    };
+
+    const capabilities = client.getCapabilities(project);
+    const request = JSON.parse(socket().sent[0]);
+    expect(request).toMatchObject({ type: "get_capabilities", project_id: "project_1" });
+    socket().message({
+      id: request.id,
+      type: "response",
+      command: "get_capabilities",
+      success: true,
+      data: { capabilities: null, skills: null, skill_diagnostics: null },
+    });
+
+    await expect(capabilities).resolves.toEqual({
+      capabilities: [],
+      skills: [],
+      skill_diagnostics: [],
+    });
+  });
+
   it("scopes subagent commands to chats and correlates the created agent", async () => {
     const { client, socket } = harness();
     const connecting = client.connect();

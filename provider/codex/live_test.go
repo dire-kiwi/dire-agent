@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imeredith/dire-agent/agent"
-	"github.com/imeredith/dire-agent/provider/codex"
-	"github.com/imeredith/dire-agent/websearch"
+	"github.com/dire-kiwi/dire-agent/agent"
+	"github.com/dire-kiwi/dire-agent/provider/codex"
+	"github.com/dire-kiwi/dire-agent/websearch"
 )
 
 // TestLiveLunaReasoningAndImage exercises the streaming reasoning-summary and

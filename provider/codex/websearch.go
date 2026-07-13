@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/imeredith/dire-agent/websearch"
+	"github.com/dire-kiwi/dire-agent/websearch"
 )
 
 const (

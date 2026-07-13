@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imeredith/dire-agent/agent"
-	"github.com/imeredith/dire-agent/websearch"
+	"github.com/dire-kiwi/dire-agent/agent"
+	"github.com/dire-kiwi/dire-agent/websearch"
 )
 
 func TestWebSearchUsesHostedToolAndExtractsCitations(t *testing.T) {

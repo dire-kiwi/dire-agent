@@ -4,7 +4,7 @@ package websearch
 import (
 	"context"
 
-	"github.com/imeredith/dire-agent/agent"
+	"github.com/dire-kiwi/dire-agent/agent"
 )
 
 const Name = "web_search"

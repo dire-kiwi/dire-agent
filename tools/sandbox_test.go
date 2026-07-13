@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/imeredith/dire-agent/tools"
+	"github.com/dire-kiwi/dire-agent/tools"
 )
 
 func TestBashUsesInjectedSandboxExecutableAndProfile(t *testing.T) {

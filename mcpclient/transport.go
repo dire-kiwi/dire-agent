@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/imeredith/dire-agent/internal/sandboxenv"
+	"github.com/dire-kiwi/dire-agent/internal/sandboxenv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

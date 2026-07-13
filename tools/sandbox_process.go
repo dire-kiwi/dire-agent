@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/imeredith/dire-agent/internal/sandboxenv"
+	"github.com/dire-kiwi/dire-agent/internal/sandboxenv"
 )
 
 // ProcessSandbox describes an argv-safe platform sandbox wrapper. Workspace,

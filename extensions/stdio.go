@@ -14,7 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/imeredith/dire-agent/internal/sandboxenv"
+	"github.com/dire-kiwi/dire-agent/internal/sandboxenv"
 )
 
 // StdioConnector launches commands directly with exec.CommandContext. It does

@@ -1,14 +1,18 @@
 import {
   AppWindow,
   CalendarClock,
+  Bug,
   FileCode2,
+  FlaskConical,
   GitBranch,
   Menu,
   MessageSquareText,
   PanelRight,
+  Play,
   Save,
   Settings2,
   SquareTerminal,
+  Wrench,
   X,
 } from "lucide-react";
 import type { AppView } from "./AppSidebar";
@@ -34,6 +38,10 @@ interface TopBarProps {
 }
 
 function LauncherIcon({ launcher }: { launcher: ProjectLauncher }) {
+  if (launcher.icon === "tool") return <Wrench size={15} />;
+  if (launcher.icon === "run") return <Play size={15} />;
+  if (launcher.icon === "debug") return <Bug size={15} />;
+  if (launcher.icon === "test") return <FlaskConical size={15} />;
   const searchable = `${launcher.id} ${launcher.label} ${launcher.command || ""}`.toLowerCase();
   if (launcher.kind === "desktop") return <AppWindow size={15} />;
   if (searchable.includes("git")) return <GitBranch size={15} />;

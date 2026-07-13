@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -40,6 +41,7 @@ type ManagerConfig struct {
 	// MaxScheduledDispatches bounds automatic scheduled runs that are active or
 	// queued at once. It defaults to eight; manual Run now calls are not capped.
 	MaxScheduledDispatches int
+	WorktreeRoot           string
 }
 
 type Manager struct {
@@ -68,6 +70,7 @@ type Manager struct {
 
 	scheduleSubMu       sync.Mutex
 	scheduleSubscribers map[uint64]chan ScheduleEvent
+	worktreeMu          sync.Mutex
 }
 
 type threadRuntime struct {
@@ -123,6 +126,50 @@ func NewManager(config ManagerConfig) (*Manager, error) {
 	if config.MaxAgentSteps <= 0 {
 		config.MaxAgentSteps = 32
 	}
+	if strings.TrimSpace(config.WorktreeRoot) == "" {
+		config.WorktreeRoot = filepath.Join(filepath.Dir(config.Store.Directory()), "worktrees")
+	}
+	worktreeRoot, err := filepath.Abs(config.WorktreeRoot)
+	if err != nil {
+		return nil, fmt.Errorf("daemon: resolve worktree root: %w", err)
+	}
+	worktreeRoot = filepath.Clean(worktreeRoot)
+	storeDirectory := filepath.Clean(config.Store.Directory())
+	if invalidWorktreeRoot(worktreeRoot, storeDirectory) {
+		return nil, errors.New("daemon: worktree root must not be the filesystem root or overlap the project store")
+	}
+	rootInfo, statErr := os.Lstat(worktreeRoot)
+	switch {
+	case statErr == nil:
+		if rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
+			return nil, errors.New("daemon: worktree root must be a non-symlink directory")
+		}
+		if rootInfo.Mode().Perm()&0o077 != 0 {
+			return nil, errors.New("daemon: existing worktree root permissions must not grant group or other access")
+		}
+	case errors.Is(statErr, os.ErrNotExist):
+		if err := os.MkdirAll(worktreeRoot, 0o700); err != nil {
+			return nil, fmt.Errorf("daemon: create worktree root: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("daemon: inspect worktree root: %w", statErr)
+	}
+	worktreeRoot, err = filepath.EvalSymlinks(worktreeRoot)
+	if err != nil {
+		return nil, fmt.Errorf("daemon: canonicalize worktree root: %w", err)
+	}
+	info, err := os.Lstat(worktreeRoot)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("daemon: worktree root must be a directory")
+	}
+	canonicalStore := storeDirectory
+	if resolvedStore, resolveErr := filepath.EvalSymlinks(storeDirectory); resolveErr == nil {
+		canonicalStore = resolvedStore
+	}
+	if invalidWorktreeRoot(worktreeRoot, canonicalStore) {
+		return nil, errors.New("daemon: worktree root must not be the filesystem root or overlap the project store")
+	}
+	config.WorktreeRoot = worktreeRoot
 	if len(config.AvailableModels) == 0 {
 		if config.DefaultProvider == "codex" {
 			config.AvailableModels = defaultModels()
@@ -161,4 +208,8 @@ func NewManager(config ManagerConfig) (*Manager, error) {
 		}
 	}
 	return manager, nil
+}
+
+func invalidWorktreeRoot(root, store string) bool {
+	return filepath.Dir(root) == root || root == store || pathWithin(root, store) || pathWithin(store, root)
 }

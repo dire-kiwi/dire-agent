@@ -42,6 +42,15 @@ func TestBridgeListsCreatesAndRunsChats(t *testing.T) {
 	if err != nil || created.IsError {
 		t.Fatalf("create: result=%+v err=%v", created, err)
 	}
+	project, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "dire_agent_create_project", Arguments: map[string]any{
+			"name": "Isolated task", "worktree": true,
+			"base_ref": "main", "environment_id": "node.toml", "source_project_id": "project_source",
+		},
+	})
+	if err != nil || project.IsError {
+		t.Fatalf("create worktree project: result=%+v err=%v", project, err)
+	}
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "dire_agent_send_message",
 		Arguments: map[string]any{"conversation_id": "chat_1", "message": "hello"},
@@ -71,6 +80,11 @@ func TestBridgeListsCreatesAndRunsChats(t *testing.T) {
 	}
 	if backend.spawnRequest.Mode != agentteam.SpawnModeModelRouter {
 		t.Fatalf("spawn mode = %q, want %q", backend.spawnRequest.Mode, agentteam.SpawnModeModelRouter)
+	}
+	if backend.projectOptions.Worktree == nil || backend.projectOptions.Worktree.BaseRef != "main" ||
+		backend.projectOptions.Worktree.EnvironmentID != "node.toml" || backend.projectOptions.Worktree.SourceProjectID != "project_source" ||
+		backend.projectOptions.CWD != "" {
+		t.Fatalf("worktree project options = %#v", backend.projectOptions)
 	}
 }
 
@@ -178,16 +192,17 @@ type agentTargetCall struct {
 }
 
 type fakeDaemon struct {
-	mu            sync.Mutex
-	chat          threadstore.Chat
-	prompt        string
-	messages      []threadstore.Message
-	agent         agentteam.Agent
-	spawnRequest  agentteam.SpawnRequest
-	agentMessages []agentMessageCall
-	waitCall      waitAgentsCall
-	interruptCall agentTargetCall
-	deleteCall    agentTargetCall
+	mu             sync.Mutex
+	chat           threadstore.Chat
+	prompt         string
+	messages       []threadstore.Message
+	agent          agentteam.Agent
+	spawnRequest   agentteam.SpawnRequest
+	agentMessages  []agentMessageCall
+	waitCall       waitAgentsCall
+	interruptCall  agentTargetCall
+	deleteCall     agentTargetCall
+	projectOptions daemon.CreateProjectOptions
 }
 
 func (f *fakeDaemon) ListProjects(context.Context) ([]threadstore.Project, error) { return nil, nil }
@@ -202,7 +217,11 @@ func (f *fakeDaemon) ListChats(context.Context) ([]threadstore.Chat, error) {
 func (f *fakeDaemon) ListConversations(ctx context.Context) ([]threadstore.Conversation, error) {
 	return f.ListChats(ctx)
 }
-func (f *fakeDaemon) CreateProject(context.Context, daemon.CreateProjectOptions) (threadstore.Project, error) {
+
+func (f *fakeDaemon) CreateProject(_ context.Context, options daemon.CreateProjectOptions) (threadstore.Project, error) {
+	f.mu.Lock()
+	f.projectOptions = options
+	f.mu.Unlock()
 	return threadstore.Project{ID: "project_1", Kind: threadstore.KindProject}, nil
 }
 func (f *fakeDaemon) CreateChat(_ context.Context, options daemon.CreateChatOptions) (threadstore.Chat, error) {

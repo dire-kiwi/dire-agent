@@ -18,6 +18,7 @@ type Command struct {
 	ThreadID          string                `json:"thread_id,omitempty"`
 	Message           string                `json:"message,omitempty"`
 	Name              string                `json:"name,omitempty"`
+	Folder            string                `json:"folder,omitempty"`
 	Category          string                `json:"category,omitempty"`
 	AdditionalFolders []string              `json:"additional_folders,omitempty"`
 	StreamingBehavior string                `json:"streaming_behavior,omitempty"`
@@ -28,6 +29,7 @@ type Command struct {
 	Model             string                `json:"model,omitempty"`
 	Level             string                `json:"level,omitempty"`
 	Mode              string                `json:"mode,omitempty"`
+	Sandbox           string                `json:"sandbox,omitempty"`
 	Tools             []string              `json:"tools"`
 	AgentID           string                `json:"agent_id,omitempty"`
 	ParentID          string                `json:"parent_id,omitempty"`
@@ -40,6 +42,9 @@ type Command struct {
 	TimeoutMS         int                   `json:"timeout_ms,omitempty"`
 	CommandName       string                `json:"command_name,omitempty"`
 	LauncherID        string                `json:"launcher_id,omitempty"`
+	EnvironmentID     string                `json:"environment_id,omitempty"`
+	Environment       *ProjectEnvironment   `json:"environment,omitempty"`
+	ExpectedHash      string                `json:"expected_hash,omitempty"`
 	Arguments         string                `json:"arguments,omitempty"`
 	Attachments       []ImageAttachment     `json:"attachments,omitempty"`
 	Config            *configuration.Config `json:"config,omitempty"`

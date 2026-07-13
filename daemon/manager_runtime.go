@@ -248,5 +248,9 @@ func (r *threadRuntime) snapshotThread() threadstore.Thread {
 		policy.Tools = cloneOptionalStrings(policy.Tools)
 		thread.ModelRouterPolicy = &policy
 	}
+	if thread.Worktree != nil {
+		copy := *thread.Worktree
+		thread.Worktree = &copy
+	}
 	return thread
 }

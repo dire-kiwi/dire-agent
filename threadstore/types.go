@@ -10,6 +10,7 @@ import (
 type Thread struct {
 	ID                string             `json:"id"`
 	Kind              string             `json:"kind,omitempty"`
+	SettingsID        string             `json:"settings_id,omitempty"`
 	ParentID          string             `json:"parent_id,omitempty"`
 	RootID            string             `json:"root_id,omitempty"`
 	AgentName         string             `json:"agent_name,omitempty"`
@@ -22,6 +23,7 @@ type Thread struct {
 	Category          string             `json:"category,omitempty"`
 	Model             string             `json:"model"`
 	CWD               string             `json:"cwd"`
+	Worktree          *WorktreeInfo      `json:"worktree,omitempty"`
 	AdditionalFolders []string           `json:"additional_folders,omitempty"`
 	Instructions      string             `json:"instructions,omitempty"`
 	ThinkingLevel     string             `json:"thinking_level"`
@@ -41,6 +43,19 @@ type RoutedAgentPolicy struct {
 	Profile string   `json:"profile"`
 	Role    string   `json:"role,omitempty"`
 	Tools   []string `json:"tools"`
+}
+
+// WorktreeInfo records the source and immutable Git starting point for a
+// daemon-managed checkout. Published worktrees intentionally outlive their
+// conversation history, so deleting a Thread never removes this path.
+type WorktreeInfo struct {
+	SourceCWD           string `json:"source_cwd"`
+	SourceRepository    string `json:"source_repository"`
+	Path                string `json:"path"`
+	ProjectRelativePath string `json:"project_relative_path,omitempty"`
+	BaseRef             string `json:"base_ref"`
+	BaseCommit          string `json:"base_commit"`
+	EnvironmentID       string `json:"environment_id,omitempty"`
 }
 
 // Project is the public name for a folder-scoped persistent conversation.

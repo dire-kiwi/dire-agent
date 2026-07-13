@@ -92,6 +92,11 @@ select { accent-color: var(--accent); }
 .worktree-metadata > div { display: grid; min-width: 0; grid-template-columns: 82px minmax(0, 1fr); align-items: start; gap: 8px; }
 .worktree-metadata span { color: var(--muted-2); font-size: 8px; }
 .worktree-metadata strong { overflow-wrap: anywhere; color: #bdc4cd; font-family: var(--font-mono); font-size: 8px; font-weight: 500; }
+.folder-autocomplete { position: relative; }
+.folder-suggestions { position: absolute; z-index: 3; top: calc(100% + 4px); right: 0; left: 0; max-height: 180px; overflow-y: auto; border: 1px solid #3b4450; border-radius: 8px; background: #0c1015; padding: 4px; box-shadow: var(--shadow); }
+.folder-suggestions button { display: block; width: 100%; overflow: hidden; border: 0; border-radius: 5px; background: transparent; padding: 7px 8px; color: var(--muted); font-family: var(--font-mono); font-size: 9px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.folder-suggestions button:hover,
+.folder-suggestions button.active { background: #1c232c; color: var(--text-soft); }
 
 .drawer-scrim { position: fixed; z-index: 59; inset: 0; border: 0; background: rgb(0 0 0 / 43%); cursor: default; }
 .conversation-drawer {

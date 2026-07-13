@@ -1,5 +1,5 @@
 import { FolderOpen, MessageSquarePlus, Plus, Settings2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type {
   ConnectionStatus,
   ProjectWorkspaceInspection,
@@ -19,6 +19,7 @@ interface CreateDialogProps {
   busy?: boolean;
   initialFolder?: string;
   initialCategory?: string;
+  onCompleteFolder?: (path: string) => Promise<string[]>;
   onClose: () => void;
   onCreate: (values: CreateConversationValues) => Promise<void>;
   onInspectWorkspace?: (folder: string) => Promise<ProjectWorkspaceInspection>;
@@ -127,16 +128,16 @@ export function CreateDialog(props: CreateDialogProps) {
             </label>
             <label>
               <span>{workspaceMode === "worktree" ? "Source project folder" : "Project folder"}</span>
-              <input
+              <FolderAutocomplete
                 value={folder}
-                onChange={(event) => {
-                  setFolder(event.target.value);
+                onChange={(value) => {
+                  setFolder(value);
                   setInspection(null);
                   setInspectedFolder("");
                   setInspectionError("");
                 }}
+                onComplete={props.onCompleteFolder}
                 placeholder="/absolute/path/to/project"
-                spellCheck={false}
               />
             </label>
             {workspaceMode === "worktree" && (
@@ -187,13 +188,13 @@ export function CreateDialog(props: CreateDialogProps) {
             )}
             <label>
               <span>Additional sandbox folders</span>
-              <textarea
+              <FolderAutocomplete
+                multiline
                 value={additionalFolders}
-                onChange={(event) => setAdditionalFolders(event.target.value)}
+                onChange={setAdditionalFolders}
+                onComplete={props.onCompleteFolder}
                 placeholder={"/absolute/path/to/shared\n/absolute/path/to/docs"}
                 aria-label="Additional sandbox folders"
-                rows={3}
-                spellCheck={false}
               />
             </label>
           </>
@@ -219,6 +220,109 @@ export function CreateDialog(props: CreateDialogProps) {
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+interface FolderAutocompleteProps {
+  value: string;
+  onChange: (value: string) => void;
+  onComplete?: (path: string) => Promise<string[]>;
+  placeholder: string;
+  multiline?: boolean;
+  "aria-label"?: string;
+}
+
+function FolderAutocomplete(props: FolderAutocompleteProps) {
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [active, setActive] = useState(0);
+  const [open, setOpen] = useState(false);
+  const request = useRef(0);
+  const acceptedPath = useRef("");
+  const listID = useId();
+  const currentPath = props.multiline ? props.value.split("\n").at(-1) ?? "" : props.value;
+
+  useEffect(() => {
+    if (currentPath === acceptedPath.current) {
+      acceptedPath.current = "";
+      setSuggestions([]);
+      setOpen(false);
+      return;
+    }
+    if (!props.onComplete || (!currentPath.startsWith("/") && !currentPath.startsWith("~"))) {
+      setSuggestions([]);
+      setOpen(false);
+      return;
+    }
+    const requestID = ++request.current;
+    const timer = window.setTimeout(() => {
+      void props.onComplete!(currentPath).then((folders) => {
+        if (request.current !== requestID) return;
+        setSuggestions(folders);
+        setActive(0);
+        setOpen(folders.length > 0);
+      }).catch(() => {
+        if (request.current === requestID) setOpen(false);
+      });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [currentPath, props.onComplete]);
+
+  const choose = (folder: string) => {
+    acceptedPath.current = folder;
+    const value = props.multiline
+      ? [...props.value.split("\n").slice(0, -1), folder].join("\n")
+      : folder;
+    props.onChange(value);
+    setOpen(false);
+  };
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (!open || suggestions.length === 0) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      setActive((index) => (index + direction + suggestions.length) % suggestions.length);
+    } else if (event.key === "Enter" || event.key === "Tab") {
+      event.preventDefault();
+      choose(suggestions[active]);
+    } else if (event.key === "Escape") {
+      event.stopPropagation();
+      setOpen(false);
+    }
+  };
+  const shared = {
+    value: props.value,
+    onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => props.onChange(event.target.value),
+    onKeyDown,
+    onFocus: () => suggestions.length > 0 && setOpen(true),
+    placeholder: props.placeholder,
+    spellCheck: false,
+    role: "combobox",
+    "aria-label": props["aria-label"],
+    "aria-autocomplete": "list" as const,
+    "aria-expanded": open,
+    "aria-controls": open ? listID : undefined,
+    "aria-activedescendant": open ? `${listID}-${active}` : undefined,
+  };
+  return (
+    <div className="folder-autocomplete">
+      {props.multiline ? <textarea {...shared} rows={3} /> : <input {...shared} />}
+      {open && (
+        <div className="folder-suggestions" id={listID} role="listbox" aria-label="Folder suggestions">
+          {suggestions.map((folder, index) => (
+            <button
+              type="button"
+              id={`${listID}-${index}`}
+              role="option"
+              aria-selected={index === active}
+              className={index === active ? "active" : ""}
+              key={folder}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => choose(folder)}
+            >{folder}</button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

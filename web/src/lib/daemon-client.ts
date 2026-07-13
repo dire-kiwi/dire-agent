@@ -191,6 +191,11 @@ export class DaemonClient extends DaemonTransport {
       .then((value) => value.models ?? []);
   }
 
+  completeFolderPath(path: string): Promise<string[]> {
+    return this.request<{ folders?: string[] | null }>({ type: "complete_folder_path", path })
+      .then((value) => value.folders ?? []);
+  }
+
   getProjectLaunchers(project: Conversation): Promise<ProjectLauncher[]> {
     return this.request<ProjectLauncher[] | null>({
       type: "get_project_launchers",

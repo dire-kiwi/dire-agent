@@ -288,6 +288,25 @@ describe("project categories and launchers", () => {
     expect(await screen.findByText("Local environment saved")).toBeInTheDocument();
   });
 
+  it("autocompletes main and additional project folders", async () => {
+    const user = userEvent.setup();
+    mockState.folderSuggestions = ["/workspace/client-a", "/workspace/client-b"];
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "New project" }));
+    const dialog = screen.getByRole("dialog", { name: "Create project" });
+    const mainFolder = within(dialog).getByPlaceholderText("/absolute/path/to/project");
+    await user.type(mainFolder, "/workspace/cl");
+    const suggestions = await within(dialog).findByRole("listbox", { name: "Folder suggestions" });
+    await user.click(within(suggestions).getByRole("option", { name: "/workspace/client-b" }));
+    expect(mainFolder).toHaveValue("/workspace/client-b");
+
+    const additional = within(dialog).getByLabelText("Additional sandbox folders");
+    await user.type(additional, "/workspace/shared\n/workspace/cl");
+    await within(dialog).findByRole("listbox", { name: "Folder suggestions" });
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(additional).toHaveValue("/workspace/shared\n/workspace/client-b");
+  });
+
   it("keeps terminal tabs mounted, toggles shortcuts, closes sessions, and launches desktop apps", async () => {
     const user = userEvent.setup();
     render(<App />);

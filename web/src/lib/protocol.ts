@@ -264,6 +264,7 @@ export interface Command {
   project_id?: string;
   thread_id?: string;
   message?: string;
+  path?: string;
   name?: string;
   category?: string;
   additional_folders?: string[];

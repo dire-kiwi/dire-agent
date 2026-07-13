@@ -543,6 +543,7 @@ function App() {
           busy={busy === "create"}
           initialFolder={readAppStorage("project.folder") || ""}
           initialCategory={readAppStorage("project.category") || ""}
+          onCompleteFolder={(path) => daemon.client?.completeFolderPath(path) ?? Promise.resolve([])}
           onClose={() => setDialog("")}
           onCreate={createConversation}
           onInspectWorkspace={(folder) => {

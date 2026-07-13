@@ -2,6 +2,10 @@ package daemon
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/dire-kiwi/dire-agent/agentteam"
@@ -138,6 +142,8 @@ func (c *serverClient) handle(command Command) Response {
 		response.Data, err = c.manager.ExecuteCapabilityCommand(c.ctx, resourceID, command.CommandName, command.Arguments)
 	case "get_available_models":
 		response.Data = map[string]any{"models": c.manager.AvailableModels()}
+	case "complete_folder_path":
+		response.Data, err = completeFolderPath(command.Path)
 	case "get_project_launchers":
 		_, response.Data, err = projectLaunchers(c.ctx, c.manager, c.config, resourceID)
 	case "inspect_project_workspace":
@@ -282,6 +288,62 @@ func projectSandboxOverride(value string) (*configuration.SandboxMode, error) {
 	default:
 		return nil, errors.New("daemon: sandbox mode must be inherit, strict, workspace, or off")
 	}
+}
+
+func completeFolderPath(value string) (map[string]any, error) {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		if value == "~" || value == "~/" {
+			value = home + string(filepath.Separator)
+		} else if strings.HasPrefix(value, "~/") {
+			trailingSeparator := strings.HasSuffix(value, string(filepath.Separator))
+			value = filepath.Join(home, strings.TrimPrefix(value, "~/"))
+			if trailingSeparator {
+				value += string(filepath.Separator)
+			}
+		}
+	}
+	if value == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		value = home + string(filepath.Separator)
+	}
+	if !filepath.IsAbs(value) {
+		return map[string]any{"folders": []string{}}, nil
+	}
+
+	parent, prefix := filepath.Split(filepath.Clean(value))
+	if strings.HasSuffix(value, string(filepath.Separator)) {
+		parent, prefix = filepath.Clean(value), ""
+	}
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		if os.IsNotExist(err) || os.IsPermission(err) {
+			return map[string]any{"folders": []string{}}, nil
+		}
+		return nil, err
+	}
+	folders := make([]string, 0, 20)
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(strings.ToLower(entry.Name()), strings.ToLower(prefix)) {
+			continue
+		}
+		if strings.HasPrefix(entry.Name(), ".") && !strings.HasPrefix(prefix, ".") {
+			continue
+		}
+		folders = append(folders, filepath.Join(parent, entry.Name()))
+	}
+	sort.Strings(folders)
+	if len(folders) > 50 {
+		folders = folders[:50]
+	}
+	return map[string]any{"folders": folders}, nil
 }
 
 func (c *serverClient) handleConfig(command Command, resourceID string) (any, error) {

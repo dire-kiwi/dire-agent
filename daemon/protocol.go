@@ -15,6 +15,7 @@ type Command struct {
 	ProjectID         string                `json:"project_id,omitempty"`
 	ThreadID          string                `json:"thread_id,omitempty"`
 	Message           string                `json:"message,omitempty"`
+	Path              string                `json:"path,omitempty"`
 	Name              string                `json:"name,omitempty"`
 	Folder            string                `json:"folder,omitempty"`
 	Category          string                `json:"category,omitempty"`

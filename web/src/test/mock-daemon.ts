@@ -127,6 +127,7 @@ export const mockState = {
   workspaceInspections: {} as Record<string, ProjectWorkspaceInspection>,
   projectSandbox: { global: "strict", effective: "strict" } as ProjectSandboxSettings,
   createProjectWaiter: null as Promise<void> | null,
+  folderSuggestions: [] as string[],
 };
 
 export function resetMockDaemon() {
@@ -147,6 +148,7 @@ export function resetMockDaemon() {
   mockState.workspaceInspections = {};
   mockState.projectSandbox = { global: "strict", effective: "strict" };
   mockState.createProjectWaiter = null;
+  mockState.folderSuggestions = [];
 }
 
 export class MockDaemonClient {
@@ -171,6 +173,10 @@ export class MockDaemonClient {
       { provider: "test", id: "gpt-test", context_window: 1_000 },
       { provider: "test", id: "server-special", context_window: 2_000 },
     ];
+  }
+  async completeFolderPath(path: string): Promise<string[]> {
+    this.record({ type: "complete_folder_path", path });
+    return mockState.folderSuggestions;
   }
   async getProjectLaunchers(project: Conversation): Promise<ProjectLauncher[]> {
     this.record({ type: "get_project_launchers", ...conversationScope(project) });

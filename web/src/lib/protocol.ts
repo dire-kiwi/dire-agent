@@ -39,6 +39,12 @@ export type ApprovalMode = "never" | "on-request" | "always";
 export type TrustMode = "denied" | "prompt" | "trusted";
 export type SandboxMode = "strict" | "workspace" | "off";
 
+export interface ProjectSandboxSettings {
+  global: SandboxMode;
+  effective: SandboxMode;
+  override?: SandboxMode;
+}
+
 export interface Usage {
   input_tokens: number;
   output_tokens: number;
@@ -269,6 +275,7 @@ export interface Command {
   model?: string;
   level?: string;
   mode?: string;
+  sandbox?: SandboxMode | "inherit";
   tools?: string[];
   config?: DaemonConfig;
   expected_revision?: number;

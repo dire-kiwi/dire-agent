@@ -411,6 +411,7 @@ set_steering_mode
 set_follow_up_mode
 set_tools
 set_project_sandbox_folders
+get_project_sandbox, set_project_sandbox
 get_available_tools
 get_available_models
 get_capabilities
@@ -438,6 +439,22 @@ The daemon deduplicates canonical paths, omits folders already contained by the
 main project folder, and permits at most 16 additions. Updating this setting
 reopens the provider session so its system instructions immediately identify
 the main folder and every included folder.
+
+Read a project's effective process-sandbox policy, or set an explicit project
+override. `inherit` removes the override and restores the global default:
+
+```json
+{
+  "id": "req-sandbox",
+  "type": "set_project_sandbox",
+  "project_id": "project_...",
+  "sandbox": "off"
+}
+```
+
+`get_project_sandbox` and `set_project_sandbox` return `global`, `effective`,
+and (when set) `override`. Valid values are `strict`, `workspace`, `off`, and
+`inherit` for `set_project_sandbox`.
 
 ## Project attachments and terminal PTY
 

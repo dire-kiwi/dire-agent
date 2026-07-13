@@ -21,6 +21,8 @@ import {
   type Conversation,
   type ImageAttachment,
   type ProjectLauncher,
+  type ProjectSandboxSettings,
+  type SandboxMode,
   type WireEvent,
 } from "./lib/protocol";
 import {
@@ -61,6 +63,8 @@ function App() {
   const [environmentProject, setEnvironmentProject] = useState<Conversation | null>(null);
   const [environmentRevision, setEnvironmentRevision] = useState(0);
   const [projectLaunchers, setProjectLaunchers] = useState<ProjectLauncher[]>(defaultProjectLaunchers);
+  const [projectSandbox, setProjectSandbox] = useState<ProjectSandboxSettings | null>(null);
+  const [projectSandboxLoading, setProjectSandboxLoading] = useState(false);
   const [openLauncherIDs, setOpenLauncherIDs] = useState<string[]>([]);
   const [activeLauncherID, setActiveLauncherID] = useState("");
   const [busy, setBusy] = useState("");
@@ -77,6 +81,7 @@ function App() {
     [daemon.chats, daemon.projects],
   );
   const selected = conversations.find((item) => item.id === selectedID) ?? null;
+  const selectedProject = selected && conversationKind(selected) === "project" ? selected : null;
   const session = useConversationSession({
     client: daemon.client,
     connection: daemon.status,
@@ -107,7 +112,7 @@ function App() {
     active: view === "settings",
     connectionVersion: daemon.version,
   });
-  const selectedProjectID = selected && conversationKind(selected) === "project" ? selected.id : "";
+  const selectedProjectID = selectedProject?.id || "";
 
   useEffect(() => {
     // The transport reports online before the initial list requests finish.
@@ -159,6 +164,24 @@ function App() {
   }, [daemon.client, daemon.status, daemon.version, environmentRevision, selectedProjectID, settings.config?.revision]);
 
   useEffect(() => {
+    if (!drawerOpen || view !== "conversation" || !selectedProject || daemon.status !== "online" || !daemon.client?.isOpen) {
+      setProjectSandbox(null);
+      setProjectSandboxLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setProjectSandboxLoading(true);
+    void daemon.client.getProjectSandbox(selectedProject).then((next) => {
+      if (!cancelled) setProjectSandbox(next);
+    }).catch(() => {
+      if (!cancelled) setProjectSandbox(null);
+    }).finally(() => {
+      if (!cancelled) setProjectSandboxLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [daemon.client, daemon.status, daemon.version, drawerOpen, selectedProject?.id, view]);
+
+  useEffect(() => {
     const available = new Set(projectLaunchers.map((launcher) => launcher.id));
     setOpenLauncherIDs((current) => {
       const filtered = current.filter((id) => available.has(id));
@@ -183,6 +206,20 @@ function App() {
       return false;
     }
   }, [daemon.client, notify, selected]);
+
+  const updateProjectSandbox = useCallback(async (mode: SandboxMode | "inherit") => {
+    if (!selectedProject || !daemon.client?.isOpen) return;
+    setProjectSandboxLoading(true);
+    try {
+      const next = await daemon.client.setProjectSandbox(selectedProject, mode);
+      setProjectSandbox(next);
+      notify(mode === "off" ? "Sandbox disabled for this project" : "Project sandbox policy updated");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Could not update the project sandbox policy");
+    } finally {
+      setProjectSandboxLoading(false);
+    }
+  }, [daemon.client, notify, selectedProject]);
 
   const toggleLauncher = useCallback((launcher: ProjectLauncher) => {
     if (daemon.status !== "online" || !selectedProjectID) return;
@@ -491,10 +528,13 @@ function App() {
         tools={daemon.tools}
         subagents={subagents}
         capabilityCommands={capabilityCommands}
+        projectSandbox={projectSandbox}
+        projectSandboxLoading={projectSandboxLoading}
         onClose={() => setDrawerOpen(false)}
         onUpdate={session.update}
         onDelete={deleteConversation}
         onManageEnvironments={(project) => setEnvironmentProject(project)}
+        onProjectSandboxChange={updateProjectSandbox}
       />
 
       {(dialog === "chat" || dialog === "project") && (

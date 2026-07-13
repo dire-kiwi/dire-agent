@@ -66,6 +66,11 @@ and are wrapped by the same native sandbox unless their mode is explicitly
 - `workspace`: the same file boundary with network allowed.
 - `off`: no process sandbox; the child has the daemon user's permissions.
 
+The Settings page selects the global process-sandbox default. In a project's
+details drawer, **Process sandbox** can override it or select **Disabled**;
+choosing **Use global default** removes that project override. Worktrees share
+their source project's sandbox policy.
+
 Sandboxed launches remove dynamic-loader control variables such as `LD_*`,
 `DYLD_*`, and `GCONV_PATH` from the child environment because a platform loader
 would otherwise interpret them before the sandbox wrapper establishes the

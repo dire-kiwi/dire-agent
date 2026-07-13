@@ -162,6 +162,31 @@ describe("project categories and launchers", () => {
     expect(within(drawer).getByText("Main project folder · relative paths start here")).toBeInTheDocument();
   });
 
+  it("overrides the global process-sandbox policy for a project", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByLabelText("Message the agent");
+
+    await user.click(screen.getAllByRole("button", { name: "Open conversation details" })[0]);
+    const drawer = screen.getByRole("complementary", { name: "Conversation details" });
+    const sandbox = await within(drawer).findByLabelText("Process sandbox");
+    expect(sandbox).toHaveValue("inherit");
+
+    await user.selectOptions(sandbox, "off");
+    await waitFor(() => expect(mockState.requests).toContainEqual(expect.objectContaining({
+      type: "set_project_sandbox",
+      sandbox: "off",
+    })));
+    expect(await within(drawer).findByText("Local processes run with the daemon user's permissions.")).toBeInTheDocument();
+
+    await user.selectOptions(sandbox, "inherit");
+    await waitFor(() => expect(mockState.requests).toContainEqual(expect.objectContaining({
+      type: "set_project_sandbox",
+      sandbox: "inherit",
+    })));
+    expect(sandbox).toHaveValue("inherit");
+  });
+
   it("creates an inspected worktree from a branch and local environment", async () => {
     const user = userEvent.setup();
     mockState.environments = [environmentFixture];

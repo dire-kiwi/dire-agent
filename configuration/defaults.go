@@ -57,6 +57,14 @@ func DefaultConfig(home string) Config {
 			Subagents: SubagentSettings{
 				Enabled: true, MaxDepth: 2, MaxChildren: 8, MaxConcurrent: 4,
 				AllowSiblingMessages: true, AutoReport: true,
+				ModelRouting: SubagentModelRoutingSettings{
+					ControllerModel:    "gpt-5.6",
+					ControllerThinking: ThinkingMedium,
+					Prompt:             "Decompose the requested work into useful independent subtasks, then choose the best allowed model and thinking level for each worker.",
+					AllowedModels: []string{
+						"gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.4",
+					},
+				},
 				Profiles: map[string]AgentProfile{
 					"general": {
 						Description: "General-purpose agent for independent implementation or research.",

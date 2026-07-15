@@ -296,6 +296,14 @@ every environment in their source/project folder; managed worktrees expose
 actions from the selected source environment and run them from the managed
 checkout.
 
+`global.subagents.model_routing` configures automatic worker-model selection:
+`controller_model` and `controller_thinking` run the routing controller,
+`prompt` describes which model and reasoning level fit which work, and
+`allowed_models` is the worker-model allowlist. A `model-router` spawn creates
+that controller first; it may decompose the request into multiple bounded
+workers while the daemon enforces the model allowlist and preserves the
+requested profile, role, and tool restrictions.
+
 ## Terminal chat
 
 Create or open a folder project:
@@ -333,7 +341,7 @@ Bubble Tea commands:
 /follow-up TEXT   queue the next turn (alias: /followup)
 /abort            cancel the active run
 /agents           list the conversation's agent tree
-/spawn NAME TASK  spawn a general child; NAME PROFILE -- TASK selects a profile
+/spawn NAME TASK  spawn a child; NAME [PROFILE] [--mode model-router] -- TASK adds options
 /message ID TEXT  send and wake an agent (alias: /msg)
 /wait [ID ...]    wait up to 30 seconds for child agents
 /interrupt ID     cancel a running child agent
@@ -579,10 +587,13 @@ request, and consumes subscription allowance:
 ```sh
 go test -tags=live ./provider/codex -run TestLiveSubscriptionCredentials -v
 go test -tags=live ./provider/codex -run TestLiveLunaReasoningAndImage -v
+go test -tags=live ./daemon -run TestLiveLunaModelRouterTwoThinkingLevels -v
 ```
 
-It uses `gpt-5.6-luna` by default; set `CODEX_LIVE_MODEL` to override it. The
-longer `TestLiveLunaPromptCaching` test validates a real cache read. The direct
+The router test runs a Luna controller at `xhigh` and requires it to create
+distinct Luna workers at `low` and `medium`. The provider credential test uses
+`gpt-5.6-luna` by default; set `CODEX_LIVE_MODEL` to override it. The longer
+`TestLiveLunaPromptCaching` test validates a real cache read. The direct
 subscription stream currently omits cache-write telemetry, so the library and
 UIs report `0` rather than inventing a write count; a later nonzero cache read
 is the evidence that the prefix was stored. Model output is never prompt-cached.

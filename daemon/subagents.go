@@ -22,6 +22,7 @@ var validAgentName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
 // its assigned task. Every child gets its own SQLite file and provider session.
 func (m *Manager) SpawnAgent(ctx context.Context, request agentteam.SpawnRequest) (agentteam.Agent, error) {
 	request.Name = strings.TrimSpace(request.Name)
+	request.Mode = strings.TrimSpace(request.Mode)
 	request.Task = strings.TrimSpace(request.Task)
 	request.Profile = strings.TrimSpace(request.Profile)
 	request.Role = strings.TrimSpace(request.Role)
@@ -42,6 +43,12 @@ func (m *Manager) SpawnAgent(ctx context.Context, request agentteam.SpawnRequest
 	if request.Thinking != "" && !validThinkingLevel(request.Thinking) {
 		return agentteam.Agent{}, errors.New("daemon: subagent thinking level is invalid")
 	}
+	if request.Mode == "" {
+		request.Mode = agentteam.SpawnModeDirect
+	}
+	if request.Mode != agentteam.SpawnModeDirect && request.Mode != agentteam.SpawnModeModelRouter {
+		return agentteam.Agent{}, fmt.Errorf("daemon: invalid subagent spawn mode %q", request.Mode)
+	}
 
 	parentRuntime, err := m.getRuntime(ctx, request.ParentID)
 	if err != nil {
@@ -56,6 +63,34 @@ func (m *Manager) SpawnAgent(ctx context.Context, request agentteam.SpawnRequest
 	if err != nil {
 		return agentteam.Agent{}, err
 	}
+	if err := validateSpawnPolicy(parent, settings); err != nil {
+		return agentteam.Agent{}, err
+	}
+	var routedPolicy *agentteam.SpawnRequest
+	if parent.AgentProfile == configuration.ModelRouterControllerProfile {
+		if request.Mode != agentteam.SpawnModeDirect {
+			return agentteam.Agent{}, errors.New("daemon: a model-router controller can only spawn a direct worker")
+		}
+		if err := validateModelRouterChoice(request.Model, settings.Subagents.ModelRouting.AllowedModels); err != nil {
+			return agentteam.Agent{}, err
+		}
+		if request.Thinking == "" {
+			return agentteam.Agent{}, errors.New("daemon: model-router controller must choose a worker thinking level")
+		}
+		policy := modelRouterSpawnPolicy(parent.ModelRouterPolicy)
+		if policy == nil {
+			return agentteam.Agent{}, errors.New("daemon: model-router controller has no persisted worker policy")
+		}
+		request.Mode, request.Profile, request.Role = agentteam.SpawnModeDirect, policy.Profile, policy.Role
+		request.Tools = cloneOptionalStrings(policy.Tools)
+	} else if request.Mode == agentteam.SpawnModeModelRouter {
+		if request.Model != "" {
+			return agentteam.Agent{}, errors.New("daemon: model-router mode selects the worker model; request model must be empty")
+		}
+		if err := validateModelRouterRequest(parent, settings.Subagents); err != nil {
+			return agentteam.Agent{}, err
+		}
+	}
 	if request.Profile == "" {
 		request.Profile = "general"
 	}
@@ -63,19 +98,39 @@ func (m *Manager) SpawnAgent(ctx context.Context, request agentteam.SpawnRequest
 	if !ok {
 		return agentteam.Agent{}, fmt.Errorf("daemon: unknown subagent profile %q", request.Profile)
 	}
-	if err := validateSpawnPolicy(parent, settings); err != nil {
-		return agentteam.Agent{}, err
+	var routedProfile *configuration.AgentProfile
+	if request.Mode == agentteam.SpawnModeModelRouter {
+		original := request
+		routedPolicy = &original
+		workerProfile := profile
+		routedProfile = &workerProfile
+		request = modelRouterRequest(parent, original, settings.Subagents.ModelRouting)
+		profile = modelRouterProfile(settings.Subagents.ModelRouting)
 	}
 
-	parentRuntime.mu.Lock()
-	parentTools := make(map[string]bool, len(parentRuntime.tools))
-	for name := range parentRuntime.tools {
-		if !isTeamTool(name) {
+	parentTools := make(map[string]bool)
+	if parent.AgentProfile == configuration.ModelRouterControllerProfile {
+		granted, err := m.effectiveModelRouterGrant(ctx, parent)
+		if err != nil {
+			return agentteam.Agent{}, err
+		}
+		for _, name := range granted {
 			parentTools[name] = true
 		}
+	} else {
+		parentRuntime.mu.Lock()
+		for name := range parentRuntime.tools {
+			if !isTeamTool(name) {
+				parentTools[name] = true
+			}
+		}
+		parentRuntime.mu.Unlock()
 	}
-	parentRuntime.mu.Unlock()
-	allowedTools, err := narrowAgentTools(parent, parentTools, profile, request.Tools)
+	grantProfile, grantTools := profile, request.Tools
+	if routedPolicy != nil && routedProfile != nil {
+		grantProfile, grantTools = *routedProfile, routedPolicy.Tools
+	}
+	allowedTools, err := narrowAgentTools(parent, parentTools, grantProfile, grantTools)
 	if err != nil {
 		return agentteam.Agent{}, err
 	}
@@ -94,6 +149,9 @@ func (m *Manager) SpawnAgent(ctx context.Context, request agentteam.SpawnRequest
 		return agentteam.Agent{}, err
 	}
 	child := m.newChildThread(id, parent, request, profile, allowedTools)
+	if routedPolicy != nil {
+		child.ModelRouterPolicy = routedAgentPolicyFromRequest(*routedPolicy)
+	}
 	created, err := m.createResource(ctx, child, "agent_created")
 	if err != nil {
 		return agentteam.Agent{}, err
@@ -141,12 +199,42 @@ func validateSpawnPolicy(parent threadstore.Thread, settings configuration.Setti
 		return fmt.Errorf("daemon: subagent depth limit %d reached", policy.MaxDepth)
 	}
 	if parent.IsSubagent() {
+		if parent.AgentProfile == configuration.ModelRouterControllerProfile {
+			return nil
+		}
 		profile, ok := policy.Profiles[parent.AgentProfile]
 		if !ok || !profile.CanSpawn {
 			return errors.New("daemon: this subagent profile cannot spawn children")
 		}
 	}
 	return nil
+}
+
+func validateModelRouterRequest(parent threadstore.Thread, settings configuration.SubagentSettings) error {
+	routing := settings.ModelRouting
+	if strings.TrimSpace(routing.ControllerModel) == "" || strings.TrimSpace(routing.Prompt) == "" || len(routing.AllowedModels) == 0 {
+		return errors.New("daemon: model-router mode is not configured")
+	}
+	if parent.Depth+2 > settings.MaxDepth {
+		return fmt.Errorf("daemon: model-router mode needs two levels below the parent; subagent depth limit is %d", settings.MaxDepth)
+	}
+	if settings.MaxConcurrent < 2 {
+		return errors.New("daemon: model-router mode requires at least two concurrent subagents")
+	}
+	return nil
+}
+
+func validateModelRouterChoice(model string, allowed []string) error {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return errors.New("daemon: model-router controller must choose a worker model")
+	}
+	for _, candidate := range allowed {
+		if model == strings.TrimSpace(candidate) {
+			return nil
+		}
+	}
+	return fmt.Errorf("daemon: model-router worker model %q is not allowed", model)
 }
 
 func enforceTeamLimits(team []threadstore.Thread, parentID string, policy configuration.SubagentSettings) error {
@@ -217,9 +305,11 @@ func (m *Manager) newChildThread(id string, parent threadstore.Thread, request a
 		builtin[name] = true
 	}
 	localTools := make([]string, 0, len(allowed))
-	for _, name := range allowed {
-		if builtin[name] {
-			localTools = append(localTools, name)
+	if request.Profile != configuration.ModelRouterControllerProfile {
+		for _, name := range allowed {
+			if builtin[name] {
+				localTools = append(localTools, name)
+			}
 		}
 	}
 	model := firstNonEmpty(request.Model, profile.Model, parent.Model)
@@ -239,6 +329,71 @@ func (m *Manager) newChildThread(id string, parent threadstore.Thread, request a
 		child.Usage.ContextWindow = modelInfo.ContextWindow
 	}
 	return child
+}
+
+func modelRouterRequest(parent threadstore.Thread, original agentteam.SpawnRequest, routing configuration.SubagentModelRoutingSettings) agentteam.SpawnRequest {
+	return agentteam.SpawnRequest{
+		ParentID: parent.ID,
+		Name:     modelRouterName(original.Name),
+		Mode:     agentteam.SpawnModeDirect,
+		Profile:  configuration.ModelRouterControllerProfile,
+		Role:     "model routing controller",
+		Task:     modelRouterTask(original),
+		Model:    strings.TrimSpace(routing.ControllerModel),
+		Thinking: string(routing.ControllerThinking),
+		Tools:    nil,
+	}
+}
+
+func modelRouterName(workerName string) string {
+	const suffix = "-router"
+	if len(workerName)+len(suffix) <= 64 {
+		return workerName + suffix
+	}
+	return workerName[:64-len(suffix)] + suffix
+}
+
+func modelRouterProfile(routing configuration.SubagentModelRoutingSettings) configuration.AgentProfile {
+	return configuration.AgentProfile{
+		Description:  "Decomposes work and delegates bounded subtasks to allowed worker models.",
+		Instructions: modelRouterInstructions(routing),
+		Tools:        nil,
+		CanSpawn:     true,
+	}
+}
+
+func routedAgentPolicyFromRequest(request agentteam.SpawnRequest) *threadstore.RoutedAgentPolicy {
+	return &threadstore.RoutedAgentPolicy{
+		Profile: request.Profile, Role: request.Role, Tools: cloneOptionalStrings(request.Tools),
+	}
+}
+
+func cloneOptionalStrings(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	return append([]string{}, values...)
+}
+
+func modelRouterInstructions(routing configuration.SubagentModelRoutingSettings) string {
+	return fmt.Sprintf("You are a model-routing controller. Do not perform the requested work yourself. Decompose the request into useful independent subtasks and call spawn_agent once for each, choosing a distinct name, focused task, allowed model, and appropriate thinking level. The daemon fixes the worker profile, role, and tool restrictions from the parent request. Stay within child and concurrency limits, and summarize worker results to your parent. Allowed worker models: %s.\n\nConfigured routing policy:\n%s",
+		strings.Join(routing.AllowedModels, ", "), routing.Prompt)
+}
+
+func modelRouterTask(request agentteam.SpawnRequest) string {
+	var details strings.Builder
+	details.WriteString("Plan and spawn one or more bounded workers for this request.\n")
+	fmt.Fprintf(&details, "Controller request name: %s\nWorker profile: %s\n", request.Name, request.Profile)
+	if request.Role != "" {
+		fmt.Fprintf(&details, "Worker role: %s\n", request.Role)
+	}
+	if request.Tools != nil {
+		fmt.Fprintf(&details, "Worker tools: %s\n", strings.Join(request.Tools, ", "))
+	}
+	details.WriteString("Overall requested work follows between the delimiters.\n<requested-work>\n")
+	details.WriteString(request.Task)
+	details.WriteString("\n</requested-work>")
+	return details.String()
 }
 
 func childAgentInstructions(parent threadstore.Thread, request agentteam.SpawnRequest) string {

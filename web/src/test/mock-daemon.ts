@@ -61,7 +61,7 @@ export const environmentFixture: ProjectEnvironment = {
 
 export function configFixture(): DaemonConfig {
   return {
-    version: 1,
+    version: 2,
     revision: 3,
     global: {
       model: { provider: "codex", id: "gpt-5.6", context_window: 372_000 },
@@ -78,6 +78,12 @@ export function configFixture(): DaemonConfig {
         max_concurrent: 4,
         allow_sibling_messages: true,
         auto_report: true,
+        model_routing: {
+          controller_model: "gpt-5.6",
+          controller_thinking: "medium",
+          prompt: "Use a fast model for focused lookups and a stronger reasoning model for complex implementation work.",
+          allowed_models: ["gpt-5.6-luna", "gpt-5.6-sol"],
+        },
         profiles: {
           general: { description: "General agent", thinking: "medium", tools: null, can_spawn: false },
         },

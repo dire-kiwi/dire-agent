@@ -1,5 +1,5 @@
-import { Plus, Trash2, Users } from "lucide-react";
-import { useState } from "react";
+import { Bot, Plus, Trash2, Users } from "lucide-react";
+import { useEffect, useState } from "react";
 import { configurationThinkingLevels } from "../../lib/display";
 import type { AgentProfile, SubagentSettings as SubagentSettingsValue } from "../../lib/protocol";
 import { Field, listText, parseList, SettingsSection, Toggle } from "./SettingsFields";
@@ -7,6 +7,16 @@ import { Field, listText, parseList, SettingsSection, Toggle } from "./SettingsF
 export function SubagentSettings(props: { value: SubagentSettingsValue; onChange: (value: SubagentSettingsValue) => void }) {
   const [name, setName] = useState("");
   const set = <K extends keyof SubagentSettingsValue,>(key: K, value: SubagentSettingsValue[K]) => props.onChange({ ...props.value, [key]: value });
+  const modelRouting = props.value.model_routing ?? { controller_model: "", controller_thinking: "medium", prompt: "", allowed_models: [] };
+  const [allowedModelsDraft, setAllowedModelsDraft] = useState(() => listText(modelRouting.allowed_models));
+  const updateModelRouting = <K extends keyof typeof modelRouting>(key: K, value: (typeof modelRouting)[K]) => {
+    set("model_routing", { ...modelRouting, [key]: value });
+  };
+  useEffect(() => {
+    if (JSON.stringify(parseList(allowedModelsDraft)) !== JSON.stringify(modelRouting.allowed_models)) {
+      setAllowedModelsDraft(listText(modelRouting.allowed_models));
+    }
+  }, [allowedModelsDraft, modelRouting.allowed_models]);
   const profiles = props.value.profiles ?? {};
   const updateProfile = (profileName: string, profile: AgentProfile) => set("profiles", { ...profiles, [profileName]: profile });
   const removeProfile = (profileName: string) => {
@@ -36,6 +46,34 @@ export function SubagentSettings(props: { value: SubagentSettingsValue; onChange
       <div className="toggle-grid">
         <Toggle label="Sibling messages" checked={props.value.allow_sibling_messages} onChange={(value) => set("allow_sibling_messages", value)} />
         <Toggle label="Auto-report results" checked={props.value.auto_report} onChange={(value) => set("auto_report", value)} />
+      </div>
+      <div className="integration-stack">
+        <article className="integration-card compact">
+          <header>
+            <div className="integration-icon"><Bot size={16} /></div>
+            <div><strong>Model router</strong><span>A controller decomposes work across allowed models.</span></div>
+          </header>
+          <div className="settings-grid two">
+            <Field label="Controller model">
+              <input value={modelRouting.controller_model} onChange={(event) => updateModelRouting("controller_model", event.target.value)} />
+            </Field>
+            <Field label="Controller thinking">
+              <select value={modelRouting.controller_thinking} onChange={(event) => updateModelRouting("controller_thinking", event.target.value as typeof modelRouting.controller_thinking)}>
+                <option value="">Inherit parent conversation</option>
+                {configurationThinkingLevels.map((level) => <option key={level}>{level}</option>)}
+              </select>
+            </Field>
+            <Field label="Allowed models">
+              <textarea rows={4} value={allowedModelsDraft} onChange={(event) => {
+                setAllowedModelsDraft(event.target.value);
+                updateModelRouting("allowed_models", parseList(event.target.value));
+              }} />
+            </Field>
+            <Field label="Routing prompt" wide>
+              <textarea rows={5} value={modelRouting.prompt} onChange={(event) => updateModelRouting("prompt", event.target.value)} />
+            </Field>
+          </div>
+        </article>
       </div>
       <div className="inline-create">
         <label><span>Profile name</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="security-review" /></label>

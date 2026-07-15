@@ -47,6 +47,95 @@ func TestStoreCreates0600FileAndPersistsUpdate(t *testing.T) {
 	}
 }
 
+func TestStoreLoadsLegacyConfigWithoutSubagentModelRouting(t *testing.T) {
+	home := t.TempDir()
+	legacy := DefaultConfig(home)
+	encoded, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(encoded, &document); err != nil {
+		t.Fatal(err)
+	}
+	global := document["global"].(map[string]any)
+	subagents := global["subagents"].(map[string]any)
+	delete(subagents, "model_routing")
+	document["version"] = float64(1)
+	encoded, err = json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "legacy.json")
+	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewStore(path, DefaultConfig(home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	routing := loaded.Global.Subagents.ModelRouting
+	if loaded.Version != CurrentVersion || routing.ControllerModel == "" || routing.Prompt == "" || len(routing.AllowedModels) == 0 {
+		t.Fatalf("migrated legacy model routing = %+v, version=%d", routing, loaded.Version)
+	}
+}
+
+func TestStoreLoadsLegacyModelRoutingWithoutControllerThinking(t *testing.T) {
+	home := t.TempDir()
+	legacy := DefaultConfig(home)
+	encoded, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(encoded, &document); err != nil {
+		t.Fatal(err)
+	}
+	global := document["global"].(map[string]any)
+	subagents := global["subagents"].(map[string]any)
+	routing := subagents["model_routing"].(map[string]any)
+	delete(routing, "controller_thinking")
+	document["version"] = float64(1)
+	encoded, err = json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "legacy-routing.json")
+	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewStore(path, DefaultConfig(home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Global.Subagents.ModelRouting.ControllerThinking != ThinkingMedium {
+		t.Fatalf("migrated controller thinking = %q, want medium", loaded.Global.Subagents.ModelRouting.ControllerThinking)
+	}
+}
+
+func TestStoreRejectsUpdateFromOlderSchemaVersion(t *testing.T) {
+	store, err := NewStore(filepath.Join(t.TempDir(), "config.json"), DefaultConfig(t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded.Version = 1
+	if _, err := store.Update(context.Background(), loaded.Revision, loaded); err == nil || !strings.Contains(err.Error(), "reload version 2") {
+		t.Fatalf("old-schema update error = %v", err)
+	}
+}
+
 func TestStoreRedactsSecretsAndPreservesPlaceholders(t *testing.T) {
 	defaults := DefaultConfig(t.TempDir())
 	defaults.Global.MCP.Servers["secrets"] = MCPServer{

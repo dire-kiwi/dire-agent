@@ -176,14 +176,8 @@ func (c *serverClient) handle(command Command) Response {
 			response.Data = map[string]any{"launched": true, "id": launcher.ID, "label": launcher.Label}
 		}
 	case "spawn_agent":
-		parentID := firstNonEmpty(command.ParentID, resourceID)
 		var spawned agentteam.Agent
-		spawned, err = c.manager.SpawnAgent(c.ctx, agentteam.SpawnRequest{
-			ParentID: parentID, Name: firstNonEmpty(command.AgentName, command.Name),
-			Profile: command.Profile, Role: command.AgentRole,
-			Task: firstNonEmpty(command.Task, command.Message), Model: command.Model,
-			Thinking: command.Level, Tools: command.Tools,
-		})
+		spawned, err = c.manager.SpawnAgent(c.ctx, spawnRequestFromCommand(command, resourceID))
 		response.Data = spawned
 		if err == nil {
 			err = c.subscribe(spawned.ID)
@@ -223,6 +217,20 @@ func (c *serverClient) handle(command Command) Response {
 		return fail(err)
 	}
 	return response
+}
+
+func spawnRequestFromCommand(command Command, resourceID string) agentteam.SpawnRequest {
+	return agentteam.SpawnRequest{
+		ParentID: firstNonEmpty(command.ParentID, resourceID),
+		Name:     firstNonEmpty(command.AgentName, command.Name),
+		Mode:     command.Mode,
+		Profile:  command.Profile,
+		Role:     command.AgentRole,
+		Task:     firstNonEmpty(command.Task, command.Message),
+		Model:    command.Model,
+		Thinking: command.Level,
+		Tools:    command.Tools,
+	}
 }
 
 func (c *serverClient) handleProjectSandbox(commandType, resourceID, requested string) (ProjectSandboxSettings, error) {

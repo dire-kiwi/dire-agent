@@ -22,7 +22,8 @@ func TestOneSQLiteFilePerThreadPersistsData(t *testing.T) {
 	db, err := store.Create(ctx, threadstore.Thread{
 		ID: "thread_test", Model: "model-a", CWD: directory,
 		ParentID: "parent", RootID: "root", AgentName: "reviewer", AgentRole: "review", Depth: 1,
-		ThinkingLevel: "medium", SteeringMode: "one-at-a-time", FollowUpMode: "one-at-a-time",
+		ModelRouterPolicy: &threadstore.RoutedAgentPolicy{Profile: "general", Tools: []string{}},
+		ThinkingLevel:     "medium", SteeringMode: "one-at-a-time", FollowUpMode: "one-at-a-time",
 		Tools: []string{"read"},
 	})
 	if err != nil {
@@ -67,5 +68,8 @@ func TestOneSQLiteFilePerThreadPersistsData(t *testing.T) {
 	}
 	if threads[0].ParentID != "parent" || threads[0].RootID != "root" || threads[0].AgentName != "reviewer" || threads[0].Depth != 1 {
 		t.Fatalf("subagent metadata = %#v", threads[0])
+	}
+	if threads[0].ModelRouterPolicy == nil || threads[0].ModelRouterPolicy.Tools == nil || len(threads[0].ModelRouterPolicy.Tools) != 0 {
+		t.Fatalf("explicit empty routed worker tools were not preserved: %#v", threads[0].ModelRouterPolicy)
 	}
 }

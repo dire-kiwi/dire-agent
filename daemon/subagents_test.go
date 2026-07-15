@@ -3,6 +3,7 @@ package daemon_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -331,6 +332,134 @@ func TestSubagentMessagingRoutesParentChildAndRejectsSiblings(t *testing.T) {
 	}
 }
 
+func TestSubagentMessagingAllowsSiblingsWakesIdleRecipientAndRejectsInvalidTeams(t *testing.T) {
+	fixture := newSubagentFixture(t, func(config *configuration.Config) {
+		config.Global.Subagents.AutoReport = false
+		config.Global.Subagents.AllowSiblingMessages = true
+	}, nil)
+	project, err := fixture.manager.CreateProject(fixture.ctx, daemon.CreateProjectOptions{
+		CWD: fixture.root, Model: "fake-model", Tools: []string{"read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := fixture.manager.SpawnAgent(fixture.ctx, agentteam.SpawnRequest{
+		ParentID: project.ID, Name: "first-sibling", Profile: "general", Task: "first task",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := fixture.manager.SpawnAgent(fixture.ctx, agentteam.SpawnRequest{
+		ParentID: project.ID, Name: "second-sibling", Profile: "general", Task: "second task",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForAgentStatus(t, fixture.ctx, fixture.manager, first.ID, "completed")
+	waitForAgentStatus(t, fixture.ctx, fixture.manager, second.ID, "completed")
+
+	delivered, err := fixture.manager.SendAgentMessage(fixture.ctx, first.ID, second.ID, "coordinate on the shared result", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForAgentStatus(t, fixture.ctx, fixture.manager, second.ID, "completed")
+	waited, err := fixture.manager.WaitAgents(fixture.ctx, second.ID, nil, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(waited.Messages) != 1 || waited.Messages[0].ID != delivered.ID || waited.Messages[0].FromID != first.ID || waited.Messages[0].ToID != second.ID {
+		t.Fatalf("allowed sibling mailbox = %#v", waited)
+	}
+	secondMessages, err := fixture.manager.Messages(fixture.ctx, second.ID, 0, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsStoredKind(secondMessages, "agent_message", "coordinate on the shared result") ||
+		!containsStoredMessage(secondMessages, "user", "Message from first-sibling") {
+		t.Fatalf("woken sibling transcript = %#v", secondMessages)
+	}
+	firstEvents, err := fixture.manager.Events(fixture.ctx, first.ID, 0, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondEvents, err := fixture.manager.Events(fixture.ctx, second.ID, 0, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsEventType(firstEvents, "agent_message_sent") || !containsEventType(secondEvents, "agent_message") {
+		t.Fatalf("sibling message events missing: source=%#v target=%#v", firstEvents, secondEvents)
+	}
+	if _, err := fixture.manager.SendAgentMessage(fixture.ctx, first.ID, first.ID, "self message", false); err == nil || !strings.Contains(err.Error(), "cannot target itself") {
+		t.Fatalf("self-message error = %v", err)
+	}
+
+	otherRoot := t.TempDir()
+	other, err := fixture.manager.CreateProject(fixture.ctx, daemon.CreateProjectOptions{
+		CWD: otherRoot, Model: "fake-model", Tools: []string{"read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.manager.SendAgentMessage(fixture.ctx, first.ID, other.ID, "cross-team message", false); err == nil || !strings.Contains(err.Error(), "cross-team") {
+		t.Fatalf("cross-team message error = %v", err)
+	}
+}
+
+func TestSubagentMessageWakesRunningRecipientThroughSteeringQueue(t *testing.T) {
+	resolver := newBlockingReadResolver()
+	fixture := newSubagentFixture(t, func(config *configuration.Config) {
+		config.Global.Subagents.AutoReport = false
+		config.Global.Subagents.MaxConcurrent = 1
+		config.Global.Subagents.Profiles = map[string]configuration.AgentProfile{
+			"blocked": {Description: "A blocked reader.", Tools: []string{"read"}},
+		}
+	}, resolver)
+	project, err := fixture.manager.CreateProject(fixture.ctx, daemon.CreateProjectOptions{
+		CWD: fixture.root, Model: "fake-model", Tools: []string{"read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := fixture.manager.SpawnAgent(fixture.ctx, agentteam.SpawnRequest{
+		ParentID: project.ID, Name: "running-recipient", Profile: "blocked", Task: "remain running",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-resolver.started:
+	case <-fixture.ctx.Done():
+		t.Fatal("recipient never entered the blocking tool")
+	}
+	message, err := fixture.manager.SendAgentMessage(fixture.ctx, project.ID, child.ID, "steer the active child", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := fixture.manager.Events(fixture.ctx, child.ID, 0, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsEventType(events, "queue_update") {
+		t.Fatalf("running recipient did not queue steering: %#v", events)
+	}
+	resolver.Unblock()
+	waitForAgentStatus(t, fixture.ctx, fixture.manager, child.ID, "completed")
+	waited, err := fixture.manager.WaitAgents(fixture.ctx, child.ID, nil, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(waited.Messages) != 1 || waited.Messages[0].ID != message.ID {
+		t.Fatalf("running recipient mailbox = %#v", waited)
+	}
+	messages, err := fixture.manager.Messages(fixture.ctx, child.ID, 0, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsStoredKind(messages, "agent_message", "steer the active child") {
+		t.Fatalf("running recipient message was not durable: %#v", messages)
+	}
+}
+
 func TestSubagentAutoReportsCompletionToParent(t *testing.T) {
 	fixture := newSubagentFixture(t, func(config *configuration.Config) {
 		config.Global.Subagents.AutoReport = true
@@ -365,6 +494,249 @@ func TestSubagentAutoReportsCompletionToParent(t *testing.T) {
 	waitForAgentStatus(t, fixture.ctx, fixture.manager, project.ID, "idle")
 }
 
+func TestModelRouterCreatesControllerAndEnforcesWorkerPolicy(t *testing.T) {
+	fixture := newSubagentFixture(t, func(config *configuration.Config) {
+		config.Global.Subagents.AutoReport = false
+		config.Global.Subagents.MaxDepth = 2
+		config.Global.Subagents.ModelRouting = configuration.SubagentModelRoutingSettings{
+			ControllerModel:    "gpt-5.6-luna",
+			ControllerThinking: configuration.ThinkingXHigh,
+			Prompt:             "Use low thinking for searches and medium thinking for implementation.",
+			AllowedModels:      []string{"gpt-5.6-luna"},
+		}
+	}, nil)
+	project, err := fixture.manager.CreateProject(fixture.ctx, daemon.CreateProjectOptions{
+		Name: "parent", CWD: fixture.root, Model: "fake-model", Tools: []string{"read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, err := fixture.manager.SpawnAgent(fixture.ctx, agentteam.SpawnRequest{
+		ParentID: project.ID, Name: "implement-feature", Mode: agentteam.SpawnModeModelRouter,
+		Profile: "general", Role: "implementer", Task: "read input.txt and implement the feature",
+		Tools: []string{"read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	controllerThread, err := fixture.manager.Thread(fixture.ctx, controller.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if controllerThread.Model != "gpt-5.6-luna" || controllerThread.ThinkingLevel != "xhigh" || controllerThread.AgentProfile != configuration.ModelRouterControllerProfile || controllerThread.Depth != 1 {
+		t.Fatalf("controller metadata = %#v", controllerThread)
+	}
+	if controllerThread.AgentName != "implement-feature-router" || len(controllerThread.Tools) != 0 {
+		t.Fatalf("controller identity/tools = name %q tools %v", controllerThread.AgentName, controllerThread.Tools)
+	}
+	if len(controllerThread.AgentTools) != 1 || controllerThread.AgentTools[0] != "read" {
+		t.Fatalf("controller did not preserve worker permission envelope: %v", controllerThread.AgentTools)
+	}
+	if controllerThread.ModelRouterPolicy == nil || controllerThread.ModelRouterPolicy.Profile != "general" || controllerThread.ModelRouterPolicy.Role != "implementer" || len(controllerThread.ModelRouterPolicy.Tools) != 1 {
+		t.Fatalf("controller worker policy = %#v", controllerThread.ModelRouterPolicy)
+	}
+	for _, expected := range []string{
+		"gpt-5.6-luna", "low thinking for searches", "independent subtasks",
+	} {
+		if !strings.Contains(controllerThread.Instructions, expected) {
+			t.Fatalf("controller instructions missing %q: %s", expected, controllerThread.Instructions)
+		}
+	}
+	waitForAgentStatus(t, fixture.ctx, fixture.manager, controller.ID, "completed")
+	messages, err := fixture.manager.Messages(fixture.ctx, controller.ID, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsStoredMessage(messages, "user", "read input.txt and implement the feature") {
+		t.Fatalf("controller task did not preserve original work: %#v", messages)
+	}
+
+	if _, err := fixture.manager.SpawnAgent(fixture.ctx, agentteam.SpawnRequest{
+		ParentID: controller.ID, Name: "worker", Profile: "general", Task: "do work", Thinking: "low",
+	}); err == nil || !strings.Contains(err.Error(), "must choose a worker model") {
+		t.Fatalf("missing routed model error = %v", err)
+	}
+	if _, err := fixture.manager.SpawnAgent(fixture.ctx, agentteam.SpawnRequest{
+		ParentID: controller.ID, Name: "worker", Profile: "general", Task: "do work", Model: "unapproved-model", Thinking: "low",
+	}); err == nil || !strings.Contains(err.Error(), "is not allowed") {
+		t.Fatalf("disallowed routed model error = %v", err)
+	}
+	if _, err := fixture.manager.SpawnAgent(fixture.ctx, agentteam.SpawnRequest{
+		ParentID: controller.ID, Name: "worker", Task: "do work", Model: "gpt-5.6-luna",
+	}); err == nil || !strings.Contains(err.Error(), "must choose a worker thinking level") {
+		t.Fatalf("missing routed thinking error = %v", err)
+	}
+	worker, err := fixture.manager.SpawnAgent(fixture.ctx, agentteam.SpawnRequest{
+		ParentID: controller.ID, Name: "search-low", Profile: "review", Role: "attacker",
+		Task: "read input.txt", Model: "gpt-5.6-luna", Thinking: "low", Tools: []string{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workerThread, err := fixture.manager.Thread(fixture.ctx, worker.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workerThread.ParentID != controller.ID || workerThread.RootID != project.ID || workerThread.Depth != 2 || workerThread.Model != "gpt-5.6-luna" {
+		t.Fatalf("worker metadata = %#v", workerThread)
+	}
+	if workerThread.AgentName != "search-low" || workerThread.AgentProfile != "general" || workerThread.AgentRole != "implementer" || workerThread.ThinkingLevel != "low" {
+		t.Fatalf("worker policy was not enforced: %#v", workerThread)
+	}
+	if len(workerThread.Tools) != 1 || workerThread.Tools[0] != "read" {
+		t.Fatalf("worker tools = %v", workerThread.Tools)
+	}
+	second, err := fixture.manager.SpawnAgent(fixture.ctx, agentteam.SpawnRequest{
+		ParentID: controller.ID, Name: "implement-medium", Task: "implement another task",
+		Model: "gpt-5.6-luna", Thinking: "medium",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondThread, err := fixture.manager.Thread(fixture.ctx, second.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secondThread.AgentName != "implement-medium" || secondThread.ThinkingLevel != "medium" || secondThread.Model != "gpt-5.6-luna" || secondThread.ParentID != controller.ID {
+		t.Fatalf("second routed worker = %#v", secondThread)
+	}
+}
+
+func TestModelRouterRejectsInvalidModeAndInsufficientDepth(t *testing.T) {
+	fixture := newSubagentFixture(t, func(config *configuration.Config) {
+		config.Global.Subagents.AutoReport = false
+		config.Global.Subagents.MaxDepth = 1
+	}, nil)
+	project, err := fixture.manager.CreateProject(fixture.ctx, daemon.CreateProjectOptions{
+		CWD: fixture.root, Model: "fake-model", Tools: []string{"read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.manager.SpawnAgent(fixture.ctx, agentteam.SpawnRequest{
+		ParentID: project.ID, Name: "bad-mode", Mode: "automatic", Task: "work",
+	}); err == nil || !strings.Contains(err.Error(), "invalid subagent spawn mode") {
+		t.Fatalf("invalid mode error = %v", err)
+	}
+	if _, err := fixture.manager.SpawnAgent(fixture.ctx, agentteam.SpawnRequest{
+		ParentID: project.ID, Name: "preselected", Mode: agentteam.SpawnModeModelRouter, Task: "work", Model: "worker-fast",
+	}); err == nil || !strings.Contains(err.Error(), "request model must be empty") {
+		t.Fatalf("preselected routed model error = %v", err)
+	}
+	if _, err := fixture.manager.SpawnAgent(fixture.ctx, agentteam.SpawnRequest{
+		ParentID: project.ID, Name: "router", Mode: agentteam.SpawnModeModelRouter, Task: "work",
+	}); err == nil || !strings.Contains(err.Error(), "needs two levels") {
+		t.Fatalf("router depth error = %v", err)
+	}
+}
+
+func TestLunaXHighModelRouterAutomaticallySpawnsLowAndMediumTasks(t *testing.T) {
+	provider := &modelRoutingProvider{}
+	fixture := newSubagentFixtureWithProvider(t, func(config *configuration.Config) {
+		config.Global.Subagents.AutoReport = false
+		config.Global.Subagents.MaxConcurrent = 3
+		config.Global.Subagents.ModelRouting = configuration.SubagentModelRoutingSettings{
+			ControllerModel:    "gpt-5.6-luna",
+			ControllerThinking: configuration.ThinkingXHigh,
+			Prompt:             "Start a low-thinking lookup task and a medium-thinking synthesis task on Luna.",
+			AllowedModels:      []string{"gpt-5.6-luna"},
+		}
+	}, nil, provider)
+	project, err := fixture.manager.CreateProject(fixture.ctx, daemon.CreateProjectOptions{
+		CWD: fixture.root, Model: "fake-model", ThinkingLevel: "low", Tools: []string{"read"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, err := fixture.manager.SpawnAgent(fixture.ctx, agentteam.SpawnRequest{
+		ParentID: project.ID, Name: "luna-pair", Mode: agentteam.SpawnModeModelRouter,
+		Profile: "general", Task: "Run two different tasks: inspect the input, then synthesize a separate summary.", Tools: []string{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	controllerThread, err := fixture.manager.Thread(fixture.ctx, controller.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if controllerThread.Model != "gpt-5.6-luna" || controllerThread.ThinkingLevel != "xhigh" {
+		t.Fatalf("controller model/thinking = %s/%s", controllerThread.Model, controllerThread.ThinkingLevel)
+	}
+	workers := map[string]agentteam.Agent{}
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for len(workers) < 2 {
+		agents, listErr := fixture.manager.ListAgents(fixture.ctx, project.ID)
+		if listErr != nil {
+			t.Fatal(listErr)
+		}
+		for _, candidate := range agents {
+			if candidate.ParentID == controller.ID {
+				workers[candidate.Name] = candidate
+			}
+		}
+		if len(workers) == 2 {
+			break
+		}
+		select {
+		case <-fixture.ctx.Done():
+			t.Fatal("routing controller never spawned its worker")
+		case <-ticker.C:
+		}
+	}
+	low, lowOK := workers["luna-low"]
+	medium, mediumOK := workers["luna-medium"]
+	if !lowOK || !mediumOK || low.Model != "gpt-5.6-luna" || medium.Model != "gpt-5.6-luna" {
+		t.Fatalf("automatically routed workers = %#v", workers)
+	}
+	waitForAgentStatus(t, fixture.ctx, fixture.manager, low.ID, "completed")
+	waitForAgentStatus(t, fixture.ctx, fixture.manager, medium.ID, "completed")
+	waitForAgentStatus(t, fixture.ctx, fixture.manager, controller.ID, "completed")
+	lowThread, err := fixture.manager.Thread(fixture.ctx, low.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mediumThread, err := fixture.manager.Thread(fixture.ctx, medium.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lowThread.ThinkingLevel != "low" || mediumThread.ThinkingLevel != "medium" {
+		t.Fatalf("worker thinking = low:%q medium:%q", lowThread.ThinkingLevel, mediumThread.ThinkingLevel)
+	}
+	lowMessages, err := fixture.manager.Messages(fixture.ctx, low.ID, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mediumMessages, err := fixture.manager.Messages(fixture.ctx, medium.ID, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsStoredMessage(lowMessages, "user", "inspect the first distinct task") ||
+		!containsStoredMessage(mediumMessages, "user", "synthesize the second distinct task") {
+		t.Fatalf("worker tasks were not distinct: low=%#v medium=%#v", lowMessages, mediumMessages)
+	}
+	schema := provider.spawnSchema()
+	var definition struct {
+		Properties map[string]any `json:"properties"`
+		Required   []string       `json:"required"`
+	}
+	if err := json.Unmarshal(schema, &definition); err != nil {
+		t.Fatal(err)
+	}
+	if len(definition.Properties) != 4 || definition.Properties["model"] == nil || definition.Properties["thinking"] == nil || len(definition.Required) != 4 {
+		t.Fatalf("controller spawn schema = %s", schema)
+	}
+	if effort := provider.effort("luna-pair-router"); effort != "xhigh" {
+		t.Fatalf("controller reasoning effort = %q", effort)
+	}
+	if effort := provider.effort("luna-low"); effort != "low" {
+		t.Fatalf("low worker reasoning effort = %q", effort)
+	}
+	if effort := provider.effort("luna-medium"); effort != "medium" {
+		t.Fatalf("medium worker reasoning effort = %q", effort)
+	}
+}
+
 type subagentFixture struct {
 	ctx      context.Context
 	root     string
@@ -374,6 +746,10 @@ type subagentFixture struct {
 }
 
 func newSubagentFixture(t *testing.T, configure func(*configuration.Config), resolver capability.Resolver) *subagentFixture {
+	return newSubagentFixtureWithProvider(t, configure, resolver, &fakeProvider{})
+}
+
+func newSubagentFixtureWithProvider(t *testing.T, configure func(*configuration.Config), resolver capability.Resolver, provider agent.StatefulProvider) *subagentFixture {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	t.Cleanup(cancel)
@@ -397,7 +773,7 @@ func newSubagentFixture(t *testing.T, configure func(*configuration.Config), res
 		t.Fatal(err)
 	}
 	manager, err := daemon.NewManager(daemon.ManagerConfig{
-		Store: store, Provider: &fakeProvider{}, DefaultCWD: root,
+		Store: store, Provider: provider, DefaultCWD: root,
 		DefaultProvider: "fake", DefaultModel: "fake-model", Settings: settings, Capabilities: resolver,
 	})
 	if err != nil {
@@ -410,6 +786,146 @@ func newSubagentFixture(t *testing.T, configure func(*configuration.Config), res
 		_ = manager.Close()
 	})
 	return &subagentFixture{ctx: ctx, root: root, store: store, settings: settings, manager: manager}
+}
+
+type modelRoutingProvider struct {
+	mu           sync.Mutex
+	next         int
+	routerSchema json.RawMessage
+	efforts      map[string]string
+}
+
+func (p *modelRoutingProvider) OpenSession(_ context.Context, options agent.SessionOptions) (agent.Session, error) {
+	p.mu.Lock()
+	p.next++
+	id := fmt.Sprintf("routing-%d", p.next)
+	if p.efforts == nil {
+		p.efforts = make(map[string]string)
+	}
+	p.mu.Unlock()
+	name := subagentNameFromInstructions(options.Instructions)
+	if strings.Contains(options.Instructions, "You are a model-routing controller") {
+		return &modelRoutingSession{id: id, name: name, provider: p}, nil
+	}
+	if name != "" {
+		return &modelRoutingWorkerSession{id: id, name: name, provider: p}, nil
+	}
+	return &fakeSession{id: id}, nil
+}
+
+func (p *modelRoutingProvider) OpenSessionFromState(_ context.Context, _ agent.SessionOptions, state agent.SessionState) (agent.Session, error) {
+	if state.Provider == "routing" {
+		return &modelRoutingSession{id: state.ID, provider: p, spawned: true}, nil
+	}
+	if state.Provider == "routing-worker" {
+		return &modelRoutingWorkerSession{id: state.ID, provider: p}, nil
+	}
+	return &fakeSession{id: state.ID}, nil
+}
+
+func (*modelRoutingProvider) Close() error { return nil }
+
+func (p *modelRoutingProvider) spawnSchema() json.RawMessage {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append(json.RawMessage(nil), p.routerSchema...)
+}
+
+func (p *modelRoutingProvider) recordEffort(name, effort string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.efforts == nil {
+		p.efforts = make(map[string]string)
+	}
+	p.efforts[name] = effort
+}
+
+func (p *modelRoutingProvider) effort(name string) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.efforts[name]
+}
+
+func subagentNameFromInstructions(instructions string) string {
+	const marker = `You are subagent "`
+	start := strings.Index(instructions, marker)
+	if start < 0 {
+		return ""
+	}
+	rest := instructions[start+len(marker):]
+	end := strings.IndexByte(rest, '"')
+	if end < 0 {
+		return ""
+	}
+	return rest[:end]
+}
+
+type modelRoutingSession struct {
+	id       string
+	name     string
+	provider *modelRoutingProvider
+	mu       sync.Mutex
+	spawned  bool
+}
+
+func (s *modelRoutingSession) ID() string { return s.id }
+
+func (s *modelRoutingSession) Run(ctx context.Context, prompt string) (agent.Result, error) {
+	step, err := s.Step(ctx, agent.StepRequest{UserMessages: []string{prompt}})
+	return step.Result, err
+}
+
+func (s *modelRoutingSession) Step(_ context.Context, request agent.StepRequest) (agent.StepResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.provider.recordEffort(s.name, request.ReasoningEffort)
+	for _, tool := range request.Tools {
+		if tool.Name == "spawn_agent" {
+			s.provider.mu.Lock()
+			s.provider.routerSchema = append(json.RawMessage(nil), tool.Parameters...)
+			s.provider.mu.Unlock()
+			break
+		}
+	}
+	if len(request.ToolResults) != 0 || s.spawned {
+		return agent.StepResult{Result: agent.Result{Text: "routing complete", SessionID: s.id, TurnID: "router-final"}}, nil
+	}
+	s.spawned = true
+	return agent.StepResult{
+		Result: agent.Result{SessionID: s.id, TurnID: "router-spawn"},
+		ToolCalls: []agent.ToolCall{
+			{ID: "call-low", Name: "spawn_agent", Arguments: json.RawMessage(`{"name":"luna-low","task":"inspect the first distinct task","model":"gpt-5.6-luna","thinking":"low"}`)},
+			{ID: "call-medium", Name: "spawn_agent", Arguments: json.RawMessage(`{"name":"luna-medium","task":"synthesize the second distinct task","model":"gpt-5.6-luna","thinking":"medium"}`)},
+		},
+	}, nil
+}
+
+func (s *modelRoutingSession) State() (agent.SessionState, error) {
+	return agent.SessionState{ID: s.id, Provider: "routing", Data: json.RawMessage(`{}`)}, nil
+}
+
+type modelRoutingWorkerSession struct {
+	id       string
+	name     string
+	provider *modelRoutingProvider
+}
+
+func (s *modelRoutingWorkerSession) ID() string { return s.id }
+
+func (s *modelRoutingWorkerSession) Run(ctx context.Context, prompt string) (agent.Result, error) {
+	step, err := s.Step(ctx, agent.StepRequest{UserMessages: []string{prompt}})
+	return step.Result, err
+}
+
+func (s *modelRoutingWorkerSession) Step(_ context.Context, request agent.StepRequest) (agent.StepResult, error) {
+	s.provider.recordEffort(s.name, request.ReasoningEffort)
+	return agent.StepResult{Result: agent.Result{
+		Text: "completed " + s.name, SessionID: s.id, TurnID: "worker-final",
+	}}, nil
+}
+
+func (s *modelRoutingWorkerSession) State() (agent.SessionState, error) {
+	return agent.SessionState{ID: s.id, Provider: "routing-worker", Data: json.RawMessage(`{}`)}, nil
 }
 
 type blockingReadResolver struct {
@@ -567,6 +1083,15 @@ func containsCompletionEvent(events []threadstore.Event, status string) bool {
 			Status string `json:"status"`
 		}
 		if json.Unmarshal(event.Data, &completion) == nil && completion.Status == status {
+			return true
+		}
+	}
+	return false
+}
+
+func containsEventType(events []threadstore.Event, eventType string) bool {
+	for _, event := range events {
+		if event.Type == eventType {
 			return true
 		}
 	}

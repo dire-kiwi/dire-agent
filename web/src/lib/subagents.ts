@@ -43,6 +43,7 @@ export interface SpawnAgentOptions {
   agent_name: string;
   agent_role?: string;
   task: string;
+  mode?: "direct" | "model-router";
   model?: string;
   profile?: string;
   level?: string;

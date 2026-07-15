@@ -43,6 +43,136 @@ func TestValidateProjectUsesEffectiveSettings(t *testing.T) {
 	}
 }
 
+func TestValidateSubagentModelRouting(t *testing.T) {
+	missing := DefaultConfig(t.TempDir())
+	missing.Global.Subagents.ModelRouting = SubagentModelRoutingSettings{}
+	if err := Validate(missing); err == nil || !strings.Contains(err.Error(), "controller model is required") {
+		t.Fatalf("missing v2 model routing error = %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		routing SubagentModelRoutingSettings
+		want    string
+	}{
+		{
+			name: "controller thinking only",
+			routing: SubagentModelRoutingSettings{
+				ControllerThinking: ThinkingXHigh,
+			},
+			want: "controller model is required",
+		},
+		{
+			name:    "controller only",
+			routing: SubagentModelRoutingSettings{ControllerModel: "router"},
+			want:    "prompt is required",
+		},
+		{
+			name:    "prompt only",
+			routing: SubagentModelRoutingSettings{Prompt: "route the task"},
+			want:    "controller model is required",
+		},
+		{
+			name:    "allowed models only",
+			routing: SubagentModelRoutingSettings{AllowedModels: []string{"worker"}},
+			want:    "controller model is required",
+		},
+		{
+			name: "blank controller",
+			routing: SubagentModelRoutingSettings{
+				ControllerModel: "  ", Prompt: "route the task", AllowedModels: []string{"worker"},
+			},
+			want: "controller model is required",
+		},
+		{
+			name: "blank prompt",
+			routing: SubagentModelRoutingSettings{
+				ControllerModel: "router", Prompt: "\t", AllowedModels: []string{"worker"},
+			},
+			want: "prompt is required",
+		},
+		{
+			name: "invalid controller thinking",
+			routing: SubagentModelRoutingSettings{
+				ControllerModel: "router", ControllerThinking: "extreme",
+				Prompt: "route the task", AllowedModels: []string{"worker"},
+			},
+			want: "controller thinking is invalid",
+		},
+		{
+			name: "missing allowed models",
+			routing: SubagentModelRoutingSettings{
+				ControllerModel: "router", Prompt: "route the task",
+			},
+			want: "at least one allowed model",
+		},
+		{
+			name: "explicit empty allowed models",
+			routing: SubagentModelRoutingSettings{
+				ControllerModel: "router", Prompt: "route the task", AllowedModels: []string{},
+			},
+			want: "at least one allowed model",
+		},
+		{
+			name: "blank allowed model",
+			routing: SubagentModelRoutingSettings{
+				ControllerModel: "router", Prompt: "route the task", AllowedModels: []string{"worker", " "},
+			},
+			want: "cannot contain an empty value",
+		},
+		{
+			name: "duplicate allowed model",
+			routing: SubagentModelRoutingSettings{
+				ControllerModel: "router", Prompt: "route the task", AllowedModels: []string{"worker", "worker"},
+			},
+			want: "contains duplicate",
+		},
+		{
+			name: "duplicate normalized allowed model",
+			routing: SubagentModelRoutingSettings{
+				ControllerModel: "router", Prompt: "route the task", AllowedModels: []string{"worker", " worker "},
+			},
+			want: "contains duplicate",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			config := DefaultConfig(t.TempDir())
+			config.Global.Subagents.ModelRouting = test.routing
+			err := Validate(config)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestValidateAcceptsXHighThinking(t *testing.T) {
+	config := DefaultConfig(t.TempDir())
+	config.Global.Thinking.Level = ThinkingXHigh
+	config.Global.StandaloneChat.Thinking = ThinkingXHigh
+	profile := config.Global.Subagents.Profiles["general"]
+	profile.Thinking = ThinkingXHigh
+	config.Global.Subagents.Profiles["general"] = profile
+	config.Global.Subagents.ModelRouting.ControllerThinking = ThinkingXHigh
+	if err := Validate(config); err != nil {
+		t.Fatalf("xhigh thinking should be valid: %v", err)
+	}
+}
+
+func TestValidateRejectsReservedModelRouterControllerProfile(t *testing.T) {
+	config := DefaultConfig(t.TempDir())
+	config.Global.Subagents.Profiles = map[string]AgentProfile{
+		ModelRouterControllerProfile: {
+			Description: "Must remain reserved for the runtime controller.",
+		},
+	}
+	err := Validate(config)
+	if err == nil || !strings.Contains(err.Error(), `profile "`+ModelRouterControllerProfile+`" is reserved`) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestMCPAndExtensionRemoval(t *testing.T) {
 	config := DefaultConfig(t.TempDir())
 	config.Global.MCP.Servers["remove"] = validStdioServer()

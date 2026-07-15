@@ -6,9 +6,19 @@ import (
 	"time"
 )
 
+const (
+	// SpawnModeDirect creates the requested child immediately. It is the
+	// compatibility default when Mode is omitted.
+	SpawnModeDirect = "direct"
+	// SpawnModeModelRouter creates a controller child which selects allowed
+	// models and delegates the requested work to one or more worker children.
+	SpawnModeModelRouter = "model-router"
+)
+
 type SpawnRequest struct {
 	ParentID string   `json:"parent_id"`
 	Name     string   `json:"name"`
+	Mode     string   `json:"mode,omitempty"`
 	Profile  string   `json:"profile,omitempty"`
 	Role     string   `json:"role,omitempty"`
 	Task     string   `json:"task"`
@@ -54,7 +64,11 @@ type Backend interface {
 }
 
 type Scope struct {
-	AgentID  string
-	CanSpawn bool
-	Profiles map[string]string
+	AgentID         string
+	CanSpawn        bool
+	Profiles        map[string]string
+	AllowedModels   []string
+	AllowedThinking []string
+	RequireModel    bool
+	SpawnPolicy     *SpawnRequest
 }

@@ -15,6 +15,7 @@ func cloneSettings(in Settings) Settings {
 	for name, source := range in.Extensions.Sources {
 		out.Extensions.Sources[name] = cloneExtensionSource(source)
 	}
+	out.Subagents.ModelRouting.AllowedModels = cloneStrings(in.Subagents.ModelRouting.AllowedModels)
 	out.Subagents.Profiles = cloneAgentProfiles(in.Subagents.Profiles)
 	return out
 }

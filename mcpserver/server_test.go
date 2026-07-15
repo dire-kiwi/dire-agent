@@ -61,6 +61,7 @@ func TestBridgeListsCreatesAndRunsChats(t *testing.T) {
 	spawned, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "dire_agent_spawn_agent", Arguments: map[string]any{
 			"parent_id": "chat_1", "name": "researcher", "task": "inspect the topic",
+			"mode": agentteam.SpawnModeModelRouter,
 		},
 	})
 	if err != nil || spawned.IsError {
@@ -77,11 +78,117 @@ func TestBridgeListsCreatesAndRunsChats(t *testing.T) {
 	if backend.prompt != "hello" || len(backend.messages) != 2 {
 		t.Fatalf("backend = prompt %q messages %+v", backend.prompt, backend.messages)
 	}
+	if backend.spawnRequest.Mode != agentteam.SpawnModeModelRouter {
+		t.Fatalf("spawn mode = %q, want %q", backend.spawnRequest.Mode, agentteam.SpawnModeModelRouter)
+	}
 	if backend.projectOptions.Worktree == nil || backend.projectOptions.Worktree.BaseRef != "main" ||
 		backend.projectOptions.Worktree.EnvironmentID != "node.toml" || backend.projectOptions.Worktree.SourceProjectID != "project_source" ||
 		backend.projectOptions.CWD != "" {
 		t.Fatalf("worktree project options = %#v", backend.projectOptions)
 	}
+}
+
+func TestBridgeAgentCoordinationTools(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	backend := &fakeDaemon{agent: agentteam.Agent{ID: "agent_1", ParentID: "chat_1", RootID: "chat_1"}}
+	bridge, err := mcpserver.New(backend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := bridge.MCP().Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	for _, request := range []struct {
+		name      string
+		arguments map[string]any
+	}{
+		{
+			name: "dire_agent_send_agent_message",
+			arguments: map[string]any{
+				"from_id": "chat_1", "agent_id": "agent_1", "message": "stay idle", "wake": false,
+			},
+		},
+		{
+			name: "dire_agent_send_agent_message",
+			arguments: map[string]any{
+				"from_id": "agent_1", "agent_id": "chat_1", "message": "default wake",
+			},
+		},
+		{
+			name: "dire_agent_wait_agents",
+			arguments: map[string]any{
+				"caller_id": "chat_1", "agent_ids": []string{"agent_1", "agent_2"}, "timeout_ms": 2750,
+			},
+		},
+		{
+			name: "dire_agent_interrupt_agent",
+			arguments: map[string]any{
+				"caller_id": "chat_1", "agent_id": "agent_1",
+			},
+		},
+		{
+			name: "dire_agent_delete_agent",
+			arguments: map[string]any{
+				"caller_id": "agent_2", "agent_id": "agent_1",
+			},
+		},
+	} {
+		result, callErr := session.CallTool(ctx, &mcp.CallToolParams{Name: request.name, Arguments: request.arguments})
+		if callErr != nil || result.IsError {
+			t.Fatalf("%s: result=%+v err=%v", request.name, result, callErr)
+		}
+	}
+
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	if len(backend.agentMessages) != 2 {
+		t.Fatalf("agent message calls = %#v", backend.agentMessages)
+	}
+	if first := backend.agentMessages[0]; first.from != "chat_1" || first.to != "agent_1" || first.message != "stay idle" || first.wake {
+		t.Fatalf("explicit wake=false message = %#v", first)
+	}
+	if second := backend.agentMessages[1]; second.from != "agent_1" || second.to != "chat_1" || second.message != "default wake" || !second.wake {
+		t.Fatalf("default wake message = %#v", second)
+	}
+	if backend.waitCall.caller != "chat_1" || backend.waitCall.timeout != 2750*time.Millisecond ||
+		len(backend.waitCall.agentIDs) != 2 || backend.waitCall.agentIDs[0] != "agent_1" || backend.waitCall.agentIDs[1] != "agent_2" {
+		t.Fatalf("wait call = %#v", backend.waitCall)
+	}
+	if backend.interruptCall != (agentTargetCall{caller: "chat_1", agentID: "agent_1"}) {
+		t.Fatalf("interrupt call = %#v", backend.interruptCall)
+	}
+	if backend.deleteCall != (agentTargetCall{caller: "agent_2", agentID: "agent_1"}) {
+		t.Fatalf("delete call = %#v", backend.deleteCall)
+	}
+}
+
+type agentMessageCall struct {
+	from    string
+	to      string
+	message string
+	wake    bool
+}
+
+type waitAgentsCall struct {
+	caller   string
+	agentIDs []string
+	timeout  time.Duration
+}
+
+type agentTargetCall struct {
+	caller  string
+	agentID string
 }
 
 type fakeDaemon struct {
@@ -90,6 +197,11 @@ type fakeDaemon struct {
 	prompt         string
 	messages       []threadstore.Message
 	agent          agentteam.Agent
+	spawnRequest   agentteam.SpawnRequest
+	agentMessages  []agentMessageCall
+	waitCall       waitAgentsCall
+	interruptCall  agentTargetCall
+	deleteCall     agentTargetCall
 	projectOptions daemon.CreateProjectOptions
 }
 
@@ -147,6 +259,7 @@ func (f *fakeDaemon) Abort(context.Context, string) error { return nil }
 func (f *fakeDaemon) SpawnAgent(_ context.Context, request agentteam.SpawnRequest) (agentteam.Agent, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.spawnRequest = request
 	f.agent = agentteam.Agent{ID: "agent_1", ParentID: request.ParentID, RootID: request.ParentID, Name: request.Name, Status: "running"}
 	return f.agent, nil
 }
@@ -158,11 +271,27 @@ func (f *fakeDaemon) ListAgents(context.Context, string) ([]agentteam.Agent, err
 	}
 	return []agentteam.Agent{f.agent}, nil
 }
-func (f *fakeDaemon) SendAgentMessage(_ context.Context, from, to, message string, _ bool) (agentteam.Message, error) {
+func (f *fakeDaemon) SendAgentMessage(_ context.Context, from, to, message string, wake bool) (agentteam.Message, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.agentMessages = append(f.agentMessages, agentMessageCall{from: from, to: to, message: message, wake: wake})
 	return agentteam.Message{ID: "agentmsg_1", FromID: from, ToID: to, Content: message}, nil
 }
-func (f *fakeDaemon) WaitAgents(context.Context, string, []string, time.Duration) (agentteam.WaitResult, error) {
+func (f *fakeDaemon) WaitAgents(_ context.Context, caller string, agentIDs []string, timeout time.Duration) (agentteam.WaitResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.waitCall = waitAgentsCall{caller: caller, agentIDs: append([]string(nil), agentIDs...), timeout: timeout}
 	return agentteam.WaitResult{Agents: []agentteam.Agent{f.agent}}, nil
 }
-func (f *fakeDaemon) InterruptAgent(context.Context, string, string) error { return nil }
-func (f *fakeDaemon) DeleteAgent(context.Context, string, string) error    { return nil }
+func (f *fakeDaemon) InterruptAgent(_ context.Context, caller, agentID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.interruptCall = agentTargetCall{caller: caller, agentID: agentID}
+	return nil
+}
+func (f *fakeDaemon) DeleteAgent(_ context.Context, caller, agentID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deleteCall = agentTargetCall{caller: caller, agentID: agentID}
+	return nil
+}

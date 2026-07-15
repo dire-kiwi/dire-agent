@@ -37,6 +37,61 @@ func TestChildWithoutSpawnPermissionCannotCreateGrandchildren(t *testing.T) {
 	}
 }
 
+func TestRoutedSpawnToolConstrainsModelThinkingAndPermissions(t *testing.T) {
+	backend := &fakeBackend{}
+	policy := &agentteam.SpawnRequest{
+		Profile: "review", Role: "reviewer", Mode: agentteam.SpawnModeDirect, Tools: []string{"read"},
+	}
+	tools := agentteam.Tools(backend, agentteam.Scope{
+		AgentID: "agent_router", CanSpawn: true,
+		AllowedModels: []string{"worker-large", "worker-fast"}, AllowedThinking: []string{"medium", "low"},
+		RequireModel: true, SpawnPolicy: policy,
+	})
+	definition := tools["spawn_agent"].Definition()
+	var schema struct {
+		Properties map[string]struct {
+			Enum []string `json:"enum"`
+		} `json:"properties"`
+		Required []string `json:"required"`
+	}
+	if err := json.Unmarshal(definition.Parameters, &schema); err != nil {
+		t.Fatal(err)
+	}
+	models := schema.Properties["model"].Enum
+	if len(models) != 2 || models[0] != "worker-fast" || models[1] != "worker-large" {
+		t.Fatalf("model enum = %v", models)
+	}
+	if !contains(schema.Required, "model") {
+		t.Fatalf("required fields = %v", schema.Required)
+	}
+	thinking := schema.Properties["thinking"].Enum
+	if len(thinking) != 2 || thinking[0] != "low" || thinking[1] != "medium" {
+		t.Fatalf("thinking enum = %v", thinking)
+	}
+	if len(schema.Properties) != 4 || !contains(schema.Required, "thinking") {
+		t.Fatalf("router schema = properties %#v required %v", schema.Properties, schema.Required)
+	}
+	_, err := tools["spawn_agent"].Execute(context.Background(), json.RawMessage(`{"name":"search","task":"find the parser","model":"worker-fast","thinking":"low"}`))
+	if err != nil || backend.spawn.Model != "worker-fast" || backend.spawn.Name != "search" || backend.spawn.Task != "find the parser" || backend.spawn.Thinking != "low" {
+		t.Fatalf("spawn request = %+v, err = %v", backend.spawn, err)
+	}
+	if backend.spawn.Profile != "review" || backend.spawn.Role != "reviewer" || len(backend.spawn.Tools) != 1 || backend.spawn.Tools[0] != "read" {
+		t.Fatalf("routed permissions were not fixed: %+v", backend.spawn)
+	}
+	if _, err := tools["spawn_agent"].Execute(context.Background(), json.RawMessage(`{"name":"bad","task":"work","model":"worker-fast","thinking":"low","profile":"general"}`)); err == nil {
+		t.Fatal("router spawn tool accepted a profile override")
+	}
+}
+
+func contains(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}
+
 type fakeBackend struct {
 	spawn agentteam.SpawnRequest
 	from  string

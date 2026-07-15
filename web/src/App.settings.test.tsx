@@ -80,6 +80,15 @@ describe("App settings", () => {
     await waitFor(() => expect(mockState.requests.filter((item) => item.type === "config_get")).toHaveLength(2));
   });
 
+  it("shows legacy empty controller thinking as explicit inheritance", async () => {
+    mockState.config.global.subagents.model_routing.controller_thinking = "";
+    const user = userEvent.setup();
+    await openSettings(user);
+    const subagents = screen.getByRole("heading", { name: "Subagents" }).closest("section")!;
+    expect(within(subagents).getByLabelText("Controller thinking")).toHaveValue("");
+    expect(within(subagents).getByRole("option", { name: "Inherit parent conversation" })).toBeInTheDocument();
+  });
+
   it("edits skill trust, MCP, extension, subagent and desktop sections", async () => {
     const user = userEvent.setup();
     await openSettings(user);
@@ -92,6 +101,31 @@ describe("App settings", () => {
     const subagents = screen.getByRole("heading", { name: "Subagents" }).closest("section")!;
     await user.clear(within(subagents).getByLabelText("Maximum depth"));
     await user.type(within(subagents).getByLabelText("Maximum depth"), "3");
+    await user.clear(within(subagents).getByLabelText("Controller model"));
+    await user.type(within(subagents).getByLabelText("Controller model"), "gpt-5.6-luna");
+    await user.selectOptions(within(subagents).getByLabelText("Controller thinking"), "xhigh");
+    await user.clear(within(subagents).getByLabelText("Allowed models"));
+    await user.type(within(subagents).getByLabelText("Allowed models"), "gpt-5.6-luna{Enter}gpt-5.6-sol");
+    await user.clear(within(subagents).getByLabelText("Routing prompt"));
+    await user.type(within(subagents).getByLabelText("Routing prompt"), "Use luna for research and sol for implementation.");
+    await user.click(screen.getAllByRole("button", { name: "Save changes" })[0]);
+
+    await waitFor(() => expect(mockState.requests).toContainEqual(expect.objectContaining({
+      type: "config_validate",
+      config: expect.objectContaining({
+        global: expect.objectContaining({
+          subagents: expect.objectContaining({
+            max_depth: 3,
+            model_routing: {
+              controller_model: "gpt-5.6-luna",
+              controller_thinking: "xhigh",
+              prompt: "Use luna for research and sol for implementation.",
+              allowed_models: ["gpt-5.6-luna", "gpt-5.6-sol"],
+            },
+          }),
+        }),
+      }),
+    })));
     expect(screen.getByRole("heading", { name: "Codex and ChatGPT apps" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Extensions and plugins" })).toBeInTheDocument();
   });

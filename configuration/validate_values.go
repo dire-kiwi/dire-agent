@@ -21,7 +21,13 @@ func validateSubagents(settings SubagentSettings, scope string) error {
 	if len(settings.Profiles) == 0 {
 		return fmt.Errorf("configuration: %s requires at least one subagent profile", scope)
 	}
+	if err := validateSubagentModelRouting(settings.ModelRouting, scope); err != nil {
+		return err
+	}
 	for name, profile := range settings.Profiles {
+		if name == ModelRouterControllerProfile {
+			return fmt.Errorf("configuration: %s subagent profile %q is reserved for model routing", scope, name)
+		}
 		if !configName.MatchString(name) {
 			return fmt.Errorf("configuration: %s invalid subagent profile %q", scope, name)
 		}
@@ -34,6 +40,36 @@ func validateSubagents(settings SubagentSettings, scope string) error {
 		if err := uniqueNonEmpty(profile.Tools, scope+" subagent profile "+name+" tools"); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func validateSubagentModelRouting(settings SubagentModelRoutingSettings, scope string) error {
+	if strings.TrimSpace(settings.ControllerModel) == "" {
+		return fmt.Errorf("configuration: %s subagent model routing controller model is required", scope)
+	}
+	if strings.TrimSpace(settings.Prompt) == "" {
+		return fmt.Errorf("configuration: %s subagent model routing prompt is required", scope)
+	}
+	// Empty preserves the pre-controller_thinking behavior for existing
+	// configurations: the runtime inherits the parent conversation's level.
+	if settings.ControllerThinking != "" && !validThinking(settings.ControllerThinking) {
+		return fmt.Errorf("configuration: %s subagent model routing controller thinking is invalid", scope)
+	}
+	if len(settings.AllowedModels) == 0 {
+		return fmt.Errorf("configuration: %s subagent model routing requires at least one allowed model", scope)
+	}
+	label := scope + " subagent model routing allowed models"
+	if err := uniqueNonEmpty(settings.AllowedModels, label); err != nil {
+		return err
+	}
+	seen := make(map[string]bool, len(settings.AllowedModels))
+	for _, model := range settings.AllowedModels {
+		normalized := strings.TrimSpace(model)
+		if seen[normalized] {
+			return fmt.Errorf("configuration: %s contains duplicate %q", label, normalized)
+		}
+		seen[normalized] = true
 	}
 	return nil
 }
@@ -244,7 +280,7 @@ func uniqueNonEmpty(values []string, label string) error {
 
 func validThinking(value ThinkingLevel) bool {
 	switch value {
-	case ThinkingNone, ThinkingMinimal, ThinkingLow, ThinkingMedium, ThinkingHigh, ThinkingMax:
+	case ThinkingNone, ThinkingMinimal, ThinkingLow, ThinkingMedium, ThinkingHigh, ThinkingXHigh, ThinkingMax:
 		return true
 	default:
 		return false
